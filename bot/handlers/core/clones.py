@@ -1,9 +1,9 @@
 """
 Клоны бота (issue #6).
 
-/addclone <token>  — зарегистрировать своего бота как клон (только в личке);
+/addclone ТОКЕН  — зарегистрировать своего бота как клон (только в личке);
 /myclones          — список своих клонов;
-/delclone <id|@username> — удалить клон.
+/delclone НОМЕР|@username — удалить клон.
 
 Безопасность:
 - токен в БД хранится только зашифрованным (bot/services/clone_crypto.py);
@@ -14,6 +14,7 @@
 - токен проверяется через getMe до сохранения.
 
 Клоны запускаются в том же процессе при старте (bot/services/clone_runner.py).
+Команды работают только в личке, поэтому ответы — на языке Telegram-клиента пользователя (issue #12).
 """
 from __future__ import annotations
 
@@ -31,11 +32,10 @@ from bot.database import SessionFactory
 from bot.database.models import BotClone
 from bot.services import clone_crypto
 from bot.services.clone_runner import fetch_bot_identity
+from bot.utils.i18n import t
 
 router = Router(name="clones")
 logger = logging.getLogger(__name__)
-
-RESTART_NOTE = "Изменение вступит в силу после перезапуска основного бота."
 
 
 async def _delete_token_message(message: Message) -> bool:
@@ -47,8 +47,24 @@ async def _delete_token_message(message: Message) -> bool:
         return False
 
 
+def with_token_warning(lang: str, text: str, deleted: bool) -> str:
+    """Если сообщение с токеном удалить не удалось, к любому ответу добавляем предупреждение."""
+    return text if deleted else f"{text}\n\n{t(lang, 'clone_delete_token_manually')}"
+
+
+def clones_list_text(lang: str, clones: list[BotClone]) -> str:
+    if not clones:
+        return t(lang, "clones_empty")
+    lines = [
+        t(lang, "clone_line", id=c.id, username=c.bot_username or "???",
+          state=t(lang, "clone_active" if c.is_active else "clone_inactive"))
+        for c in clones
+    ]
+    return "\n".join(lines) + "\n\n" + t(lang, "clones_delete_hint")
+
+
 @router.message(Command("addclone"))
-async def add_clone(message: Message, command: CommandObject) -> None:
+async def add_clone(message: Message, command: CommandObject, lang: str = "ru") -> None:
     token = (command.args or "").strip()
 
     # Токен никогда не должен оставаться в истории чата.
@@ -58,20 +74,22 @@ async def add_clone(message: Message, command: CommandObject) -> None:
         # В группе не отвечаем, чтобы не светить команду. Токен уже удалён выше.
         return
 
-    warn = "" if deleted else "\n\n\u26a0\ufe0f Удалите сообщение с токеном вручную."
+    async def reply(key: str, **kwargs: object) -> None:
+        await message.answer(with_token_warning(lang, t(lang, key, **kwargs), deleted))
+
     user_id = message.from_user.id
 
     if not clone_crypto.is_configured():
-        await message.answer("Клоны отключены: администратор бота не задал ключ шифрования." + warn)
+        await reply("clone_disabled")
         return
     if user_id not in settings.clone_allowed_ids:
-        await message.answer("Создание клонов недоступно для вашего аккаунта." + warn)
+        await reply("clone_not_allowed")
         return
     if not token:
-        await message.answer("Использование: /addclone &lt;токен от @BotFather&gt;")
+        await message.answer(t(lang, "addclone_usage"))
         return
     if token == settings.bot_token:
-        await message.answer("Это токен основного бота." + warn)
+        await reply("clone_main_token")
         return
 
     token_hash = clone_crypto.token_fingerprint(token)
@@ -81,20 +99,20 @@ async def add_clone(message: Message, command: CommandObject) -> None:
             .where(BotClone.owner_user_id == user_id, BotClone.is_active.is_(True))
         )
         if (active_count or 0) >= settings.max_clones_per_user:
-            await message.answer(f"Достигнут лимит клонов: {settings.max_clones_per_user}." + warn)
+            await reply("clone_limit", limit=settings.max_clones_per_user)
             return
         if await session.scalar(select(BotClone.id).where(BotClone.token_hash == token_hash)):
-            await message.answer("Этот бот уже зарегистрирован как клон." + warn)
+            await reply("clone_exists")
             return
 
     try:
         me = await fetch_bot_identity(token)
     except Exception:
         logger.exception("Не удалось проверить токен клона")
-        await message.answer("Telegram сейчас недоступен, попробуйте позже." + warn)
+        await reply("clone_telegram_unavailable")
         return
     if me is None:
-        await message.answer("Токен недействителен. Проверьте его в @BotFather." + warn)
+        await reply("clone_invalid_token")
         return
 
     async with SessionFactory() as session:
@@ -110,37 +128,30 @@ async def add_clone(message: Message, command: CommandObject) -> None:
         except IntegrityError:
             # Гонка: тот же токен добавили параллельно.
             await session.rollback()
-            await message.answer("Этот бот уже зарегистрирован как клон." + warn)
+            await reply("clone_exists")
             return
 
-    await message.answer(f"\u2705 Клон @{me.username} сохранён. {RESTART_NOTE}" + warn)
+    await reply("clone_saved", username=me.username or "???")
 
 
 @router.message(Command("myclones"))
-async def list_clones(message: Message) -> None:
+async def list_clones(message: Message, lang: str = "ru") -> None:
     if message.chat.type != "private" or message.from_user is None:
         return
     async with SessionFactory() as session:
         rows = (await session.execute(
             select(BotClone).where(BotClone.owner_user_id == message.from_user.id).order_by(BotClone.id)
         )).scalars().all()
-    if not rows:
-        await message.answer("У вас нет клонов.")
-        return
-    lines = [
-        f"#{c.id} @{c.bot_username or '???'} — {'активен' if c.is_active else 'выключен'}"
-        for c in rows
-    ]
-    await message.answer("\n".join(lines) + "\n\nУдалить: /delclone &lt;номер или @username&gt;")
+    await message.answer(clones_list_text(lang, list(rows)))
 
 
 @router.message(Command("delclone"))
-async def delete_clone(message: Message, command: CommandObject) -> None:
+async def delete_clone(message: Message, command: CommandObject, lang: str = "ru") -> None:
     if message.chat.type != "private" or message.from_user is None:
         return
     arg = (command.args or "").strip().lstrip("#@")
     if not arg:
-        await message.answer("Использование: /delclone &lt;номер или @username&gt; (см. /myclones)")
+        await message.answer(t(lang, "delclone_usage"))
         return
 
     condition = BotClone.id == int(arg) if arg.isdigit() else func.lower(BotClone.bot_username) == arg.lower()
@@ -149,13 +160,10 @@ async def delete_clone(message: Message, command: CommandObject) -> None:
             select(BotClone).where(BotClone.owner_user_id == message.from_user.id, condition)
         )).scalar_one_or_none()
         if row is None:
-            await message.answer("Клон не найден среди ваших.")
+            await message.answer(t(lang, "clone_not_found"))
             return
         username = row.bot_username
         await session.delete(row)
         await session.commit()
 
-    await message.answer(
-        f"Клон @{username or '???'} удалён, токен стёрт из базы. {RESTART_NOTE}\n"
-        "Рекомендуем также перевыпустить токен в @BotFather (/revoke)."
-    )
+    await message.answer(t(lang, "clone_deleted", username=username or "???"))

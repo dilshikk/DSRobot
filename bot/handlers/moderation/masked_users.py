@@ -13,6 +13,7 @@ from bot.database import SessionFactory
 from bot.filters.roles import HasRole
 from bot.services.settings_service import update_settings
 from bot.utils.permissions import is_privileged
+from bot.utils.telegram import delete_message_safely
 
 router = Router(name="masked_users")
 
@@ -33,9 +34,6 @@ async def check_masked_links(message: Message, chat_settings: dict, chat_user_ro
             visible = (message.text or "")[entity.offset: entity.offset + entity.length]
             real_domain = urlparse(entity.url).netloc
             if real_domain and real_domain.lower() not in visible.lower():
-                try:
-                    await message.delete()
-                except Exception:
-                    pass
+                await delete_message_safely(message)
                 return True
     return False

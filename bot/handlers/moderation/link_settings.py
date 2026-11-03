@@ -11,6 +11,7 @@ from bot.filters.roles import HasRole
 from bot.services.moderation_actions import apply_sanction
 from bot.services.settings_service import update_settings
 from bot.utils.permissions import is_privileged
+from bot.utils.telegram import delete_message_safely
 
 router = Router(name="link_settings")
 
@@ -54,10 +55,7 @@ async def check_links(message: Message, chat_settings: dict, chat_user_role: str
     if any(domain in match.group(0).lower() for domain in cfg.get("whitelist", [])):
         return False
 
-    try:
-        await message.delete()
-    except Exception:
-        pass
+    await delete_message_safely(message)
     if action != "delete":
         await apply_sanction(message.bot, message.chat.id, message.from_user.id, action, "Запрещённая ссылка", 0)
     return True

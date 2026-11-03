@@ -11,6 +11,7 @@ from bot.database import SessionFactory
 from bot.filters.roles import HasRole
 from bot.services.settings_service import update_settings
 from bot.utils.permissions import is_privileged
+from bot.utils.telegram import delete_message_safely
 
 router = Router(name="alphabets")
 
@@ -45,8 +46,5 @@ async def check_alphabet(message: Message, chat_settings: dict, chat_user_role: 
         return False
     if any(any(p.match(c) for p in allowed_patterns) for c in letters):
         return False
-    try:
-        await message.delete()
-    except Exception:
-        pass
+    await delete_message_safely(message)
     return True

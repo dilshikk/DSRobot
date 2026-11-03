@@ -13,6 +13,7 @@ from aiogram.types import Message
 from bot.database import SessionFactory
 from bot.filters.roles import HasRole
 from bot.services.settings_service import update_settings
+from bot.utils.telegram import delete_message_safely
 
 router = Router(name="message_deletion")
 
@@ -30,18 +31,12 @@ async def toggle_clean_service(message: Message, chat_settings: dict) -> None:
 
 async def delete_service_message(message: Message, chat_settings: dict) -> None:
     if chat_settings.get("message_deletion", {}).get("delete_service_messages"):
-        try:
-            await message.delete()
-        except Exception:
-            pass
+        await delete_message_safely(message)
 
 
 async def _delayed_delete(message: Message, delay: int) -> None:
     await asyncio.sleep(delay)
-    try:
-        await message.delete()
-    except Exception:
-        pass
+    await delete_message_safely(message)
 
 
 def schedule_command_autodelete(message: Message, chat_settings: dict) -> None:

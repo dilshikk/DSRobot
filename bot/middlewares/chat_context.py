@@ -7,15 +7,19 @@ Chat Context Middleware.
 """
 from __future__ import annotations
 
+import logging
 from typing import Any, Awaitable, Callable
 
 from aiogram import BaseMiddleware
+from aiogram.exceptions import TelegramAPIError
 from aiogram.types import ChatMemberAdministrator, ChatMemberOwner, Message, TelegramObject, User as TgUser
 
 from bot.database import SessionFactory
 from bot.services.cache import get_json, set_json
 from bot.services.settings_service import get_or_create_chat, get_settings
 from bot.services.user_service import ensure_chat_user, upsert_tg_user
+
+logger = logging.getLogger(__name__)
 
 ROLE_CACHE_TTL = 60
 # Как часто (сек) обновлять users/chat_users для одного и того же человека в чате.
@@ -91,7 +95,9 @@ class ChatContextMiddleware(BaseMiddleware):
         bot = data["bot"]
         try:
             member = await bot.get_chat_member(chat_id, user_id)
-        except Exception:
+        except TelegramAPIError as exc:
+            # Безопасный вариант по умолчанию — обычный участник без прав.
+            logger.warning("Cannot resolve role of %s in chat %s: %s", user_id, chat_id, exc)
             await set_json(cache_key, "member", ex=ROLE_CACHE_TTL)
             return "member"
 

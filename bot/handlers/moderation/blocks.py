@@ -2,7 +2,10 @@
 
 Проверка пересылок вызывается из moderation_pipeline, блок ботов — из service_events (issue #1).
 """
+import logging
+
 from aiogram import Bot, Router
+from aiogram.exceptions import TelegramAPIError, TelegramBadRequest
 from aiogram.filters import Command, CommandObject
 from aiogram.types import Message, User
 
@@ -10,8 +13,10 @@ from bot.database import SessionFactory
 from bot.filters.roles import HasRole
 from bot.services.settings_service import update_settings
 from bot.utils.permissions import is_privileged
+from bot.utils.telegram import delete_message_safely, is_rights_error, notify_missing_rights
 
 router = Router(name="blocks")
+logger = logging.getLogger(__name__)
 
 TOGGLES = {"forwards", "links", "usernames", "bots", "inline"}
 
@@ -48,10 +53,7 @@ async def check_forward_block(message: Message, chat_settings: dict, chat_user_r
         return False
     if not _is_forwarded(message):
         return False
-    try:
-        await message.delete()
-    except Exception:
-        pass
+    await delete_message_safely(message)
     return True
 
 
@@ -67,7 +69,11 @@ async def kick_blocked_bots(bot: Bot, chat_id: int, chat_settings: dict, members
                 await bot.ban_chat_member(chat_id, member.id)
                 await bot.unban_chat_member(chat_id, member.id)
                 continue
-            except Exception:
-                pass
+            except TelegramBadRequest as exc:
+                logger.warning("Cannot kick bot %s from chat %s: %s", member.id, chat_id, exc)
+                if is_rights_error(exc):
+                    await notify_missing_rights(bot, chat_id, "удалять добавленных ботов")
+            except TelegramAPIError as exc:
+                logger.warning("Cannot kick bot %s from chat %s: %s", member.id, chat_id, exc)
         remaining.append(member)
     return remaining

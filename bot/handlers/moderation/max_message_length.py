@@ -7,6 +7,7 @@ from bot.database import SessionFactory
 from bot.filters.roles import HasRole
 from bot.services.settings_service import update_settings
 from bot.utils.permissions import is_privileged
+from bot.utils.telegram import delete_message_safely
 
 router = Router(name="max_message_length")
 
@@ -30,8 +31,5 @@ async def check_max_length(message: Message, chat_settings: dict, chat_user_role
         return False
     if len(message.text) <= cfg.get("limit", 4000):
         return False
-    try:
-        await message.delete()
-    except Exception:
-        pass
+    await delete_message_safely(message)
     return True

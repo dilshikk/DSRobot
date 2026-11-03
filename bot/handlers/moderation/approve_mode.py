@@ -10,6 +10,7 @@ from bot.database.models import ChatUser
 from bot.filters.roles import HasRole
 from bot.services.settings_service import update_settings
 from bot.utils.permissions import is_privileged
+from bot.utils.telegram import delete_message_safely
 
 router = Router(name="approve_mode")
 
@@ -51,8 +52,5 @@ async def check_unapproved(message: Message, chat_settings: dict, chat_user_role
         )).scalar_one_or_none()
     if cu and cu.approved:
         return False
-    try:
-        await message.delete()
-    except Exception:
-        pass
+    await delete_message_safely(message)
     return True

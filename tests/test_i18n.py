@@ -5,6 +5,8 @@ import string
 import pytest
 
 from bot.database.models import ChatSettings
+from bot.handlers.moderation.banned_words import word_mode_text, words_list_text
+from bot.handlers.moderation.max_message_length import max_len_text
 from bot.handlers.welcome.goodbye import goodbye_text
 from bot.handlers.welcome.welcome import welcome_text
 from bot.utils.i18n import AVAILABLE_LANGS, LOCALES_DIR, normalize_lang, t
@@ -79,3 +81,29 @@ def test_captcha_prompt_is_translated():
 def test_rights_notice_is_translated():
     assert "delete messages" in rights_notice_text("en", "rights_action_delete")
     assert "удалять сообщения" in rights_notice_text("ru", "rights_action_delete")
+
+
+# --- часть 3: запрещённые слова, ссылки, длина сообщения ---
+
+def test_banned_words_list_is_translated_and_escaped():
+    text = words_list_text("en", "<Chat>", "word", ["b", "a<"])
+    assert text.startswith("Banned words in «&lt;Chat&gt;» (mode: word)")
+    assert text.endswith("a&lt;, b")
+    assert "the list is empty" in words_list_text("en", "Chat", "word", [])
+    assert "список пуст" in words_list_text("ru", "Chat", "word", [])
+
+
+def test_word_mode_label_is_translated():
+    assert word_mode_text("en", "substring") == "✅ Banned word matching: any occurrence."
+    assert "только целое слово" in word_mode_text("ru", "word")
+
+
+def test_max_len_reply_is_translated():
+    assert max_len_text("en", 500).endswith(": 500")
+    assert "(off)" in max_len_text("en", 0)
+    assert "(выкл.)" in max_len_text("ru", 0)
+
+
+@pytest.mark.parametrize("key", ["banned_word_reason", "link_reason", "link_action_usage"])
+def test_new_keys_differ_between_languages(key):
+    assert t("ru", key) != t("en", key)

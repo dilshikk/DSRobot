@@ -1,4 +1,7 @@
-"""Основные команды модерации: /ban /mute /kick /warn /unwarn /unban /unmute — работают ответом на сообщение."""
+"""
+Основные команды модерации: /ban /mute /kick /unban /unmute.
+Цель — ответ на сообщение, @username или числовой id (см. services/moderation_targets.py).
+"""
 from __future__ import annotations
 
 from aiogram import Router
@@ -6,7 +9,7 @@ from aiogram.filters import Command, CommandObject
 from aiogram.types import Message
 
 from bot.filters.roles import HasRole
-from bot.services.moderation_actions import apply_sanction
+from bot.services.moderation_targets import prepare_target, run_sanction
 from bot.utils.i18n import t
 
 router = Router(name="moderation_commands")
@@ -20,49 +23,42 @@ def _parse_duration(raw: str | None) -> int | None:
     return int(raw[:-1]) * DURATION_MAP[raw[-1]]
 
 
-async def _target_and_reason(message: Message, command: CommandObject) -> tuple[int | None, str]:
-    if message.reply_to_message:
-        return message.reply_to_message.from_user.id, (command.args or "")
-    return None, ""
-
-
 @router.message(Command("ban"), HasRole("admin"))
 async def cmd_ban(message: Message, command: CommandObject) -> None:
-    target_id, reason = await _target_and_reason(message, command)
-    if not target_id:
-        await message.answer("Ответьте на сообщение пользователя: /ban [причина]")
+    prepared = await prepare_target(message, command.args, "/ban [причина]")
+    if prepared is None:
         return
-    await apply_sanction(message.bot, message.chat.id, target_id, "ban", reason, message.from_user.id)
-    await message.answer(t("ru", "user_banned", mention=message.reply_to_message.from_user.mention_html()),
-                          parse_mode="HTML")
+    target, reason = prepared
+    if await run_sanction(message, target, "ban", reason):
+        await message.answer(t("ru", "user_banned", mention=target.mention), parse_mode="HTML")
 
 
 @router.message(Command("unban"), HasRole("admin"))
 async def cmd_unban(message: Message, command: CommandObject) -> None:
-    target_id, _ = await _target_and_reason(message, command)
-    if not target_id:
-        await message.answer("Ответьте на сообщение пользователя: /unban")
+    prepared = await prepare_target(message, command.args, "/unban", protect=False)
+    if prepared is None:
         return
-    await apply_sanction(message.bot, message.chat.id, target_id, "unban", "", message.from_user.id)
-    await message.answer("\u2705 Разбанен(а).")
+    target, _ = prepared
+    if await run_sanction(message, target, "unban"):
+        await message.answer("\u2705 Разбанен(а).")
 
 
 @router.message(Command("kick"), HasRole("admin"))
 async def cmd_kick(message: Message, command: CommandObject) -> None:
-    target_id, reason = await _target_and_reason(message, command)
-    if not target_id:
-        await message.answer("Ответьте на сообщение пользователя: /kick [причина]")
+    prepared = await prepare_target(message, command.args, "/kick [причина]")
+    if prepared is None:
         return
-    await apply_sanction(message.bot, message.chat.id, target_id, "kick", reason, message.from_user.id)
-    await message.answer("\U0001f465 Пользователь удалён из чата (может зайти повторно).")
+    target, reason = prepared
+    if await run_sanction(message, target, "kick", reason):
+        await message.answer("\U0001f465 Пользователь удалён из чата (может зайти повторно).")
 
 
 @router.message(Command("mute"), HasRole("admin"))
 async def cmd_mute(message: Message, command: CommandObject) -> None:
-    target_id, reason = await _target_and_reason(message, command)
-    if not target_id:
-        await message.answer("Ответьте на сообщение пользователя: /mute [1h/1d/...] [причина]")
+    prepared = await prepare_target(message, command.args, "/mute [1h/1d/...] [причина]")
+    if prepared is None:
         return
+    target, reason = prepared
     duration = None
     if reason:
         first_word, *rest = reason.split(maxsplit=1)
@@ -70,16 +66,15 @@ async def cmd_mute(message: Message, command: CommandObject) -> None:
         if parsed:
             duration = parsed
             reason = rest[0] if rest else ""
-    await apply_sanction(message.bot, message.chat.id, target_id, "mute", reason, message.from_user.id, duration)
-    await message.answer(t("ru", "user_muted", mention=message.reply_to_message.from_user.mention_html()),
-                          parse_mode="HTML")
+    if await run_sanction(message, target, "mute", reason, duration):
+        await message.answer(t("ru", "user_muted", mention=target.mention), parse_mode="HTML")
 
 
 @router.message(Command("unmute"), HasRole("admin"))
 async def cmd_unmute(message: Message, command: CommandObject) -> None:
-    target_id, _ = await _target_and_reason(message, command)
-    if not target_id:
-        await message.answer("Ответьте на сообщение пользователя: /unmute")
+    prepared = await prepare_target(message, command.args, "/unmute", protect=False)
+    if prepared is None:
         return
-    await apply_sanction(message.bot, message.chat.id, target_id, "unmute", "", message.from_user.id)
-    await message.answer("\U0001f50a Размучен(а).")
+    target, _ = prepared
+    if await run_sanction(message, target, "unmute"):
+        await message.answer("\U0001f50a Размучен(а).")

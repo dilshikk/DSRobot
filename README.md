@@ -84,8 +84,8 @@ Async Workers). Ниже — что реально реализовано, чт�
 ## Запуск
 
 ```bash
-git clone <ваш-репозиторий>
-cd telegram-group-bot
+git clone https://github.com/dilshikk/DSRobot.git
+cd DSRobot
 cp .env.example .env
 # впишите BOT_TOKEN (получить у @BotFather) и остальные переменные
 docker compose up --build
@@ -105,20 +105,14 @@ pip install -r requirements.txt
 python -m bot.main
 ```
 
-## Как загрузить в свой GitHub
-
-У меня нет сетевого доступа из песочницы, поэтому запушить самостоятельно я не могу.
-Сделайте это одной командой у себя:
+## Тесты
 
 ```bash
-cd telegram-group-bot
-git init
-git add .
-git commit -m "Initial commit: Telegram group/channel management bot scaffold"
-git branch -M main
-git remote add origin https://github.com/<ваш-юзернейм>/<репозиторий>.git
-git push -u origin main
+pip install -r requirements-dev.txt
+pytest
 ```
+
+PostgreSQL и Redis для тестов не нужны: `tests/conftest.py` подменяет их в памяти.
 
 ## Структура проекта
 
@@ -141,6 +135,7 @@ bot/
     cache.py                     # Redis-обёртка
   handlers/               # ~40 роутеров, сгруппированных по core/moderation/welcome/chat/misc
   locales/                # ru.json, en.json
+tests/                    # pytest, без внешних сервисов
 docker-compose.yml
 Dockerfile
 requirements.txt

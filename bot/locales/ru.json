@@ -98,6 +98,8 @@
   "delcommands_off": "✅ Автоудаление команд выключено.",
   "nsfw_provider_missing": "⚠️ Требуется подключить провайдера классификации изображений в .env",
   "antispam_reason": "Antispam: повторяющиеся сообщения",
+  "antispam_usage": "Использование: /setantispam ПОВТОРОВ [МИНУТ_МУТА]\nПовторов — от {min} до {max}, минут — от 1 до {max_minutes} (по умолчанию 30).",
+  "antispam_set": "✅ Антиспам: мут на {minutes} мин. после {threshold} одинаковых сообщений подряд.",
 
   "block_usage": "Использование: /block {options}",
   "unblock_usage": "Использование: /unblock {options}",

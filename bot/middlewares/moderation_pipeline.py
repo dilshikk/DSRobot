@@ -84,6 +84,10 @@ class ModerationPipelineMiddleware(BaseMiddleware):
         if settings is None or _is_service(event):
             return await handler(event, data)
 
+        # Посты привязанного канала в группе обсуждений: удалив их, бот ломает комментарии (issue #44).
+        if data.get("is_linked_channel"):
+            return await handler(event, data)
+
         is_edit = event.edit_date is not None
         is_command = _is_command(event)
 

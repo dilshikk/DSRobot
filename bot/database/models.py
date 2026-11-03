@@ -13,11 +13,12 @@ ORM-модели.
 from __future__ import annotations
 
 import enum
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    Date,
     DateTime,
     Enum,
     ForeignKey,
@@ -91,7 +92,11 @@ class ChatSettings(Base):
 
 
 class ChatUser(Base):
-    """Связь пользователь-чат: роль, статус, дата вступления, счётчик варнов."""
+    """Связь пользователь-чат: роль, статус, дата вступления, счётчик варнов.
+
+    issue #47: last_seen_at — последняя активность именно в этом чате (User.last_seen глобальный),
+    left_at — участник вышел/удалён (NULL = в чате). Запись не удаляется, чтобы сохранить варны.
+    """
     __tablename__ = "chat_users"
     __table_args__ = (UniqueConstraint("chat_id", "user_id", name="uq_chat_user"),)
 
@@ -104,7 +109,10 @@ class ChatUser(Base):
     muted_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     banned_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     approved: Mapped[bool] = mapped_column(Boolean, default=False)  # approve_mode
+    pending_approval: Mapped[bool] = mapped_column(Boolean, default=False)  # issue #50
     joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    left_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class User(Base):
@@ -223,13 +231,16 @@ class TopicSettings(Base):
 
 
 class GroupStat(Base):
-    """Ежедневная агрегированная статистика чата (сообщения, вступления, санкции)."""
+    """Ежедневная агрегированная статистика чата (сообщения, вступления, санкции).
+
+    issue #47: date — календарный день в часовом поясе чата (DATE, а не timestamptz).
+    """
     __tablename__ = "group_stats"
     __table_args__ = (UniqueConstraint("chat_id", "date", name="uq_chat_date"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     chat_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("chats.id", ondelete="CASCADE"))
-    date: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    date: Mapped[date] = mapped_column(Date)
     messages_count: Mapped[int] = mapped_column(Integer, default=0)
     joins_count: Mapped[int] = mapped_column(Integer, default=0)
     leaves_count: Mapped[int] = mapped_column(Integer, default=0)

@@ -11,6 +11,9 @@ Moderation pipeline middleware (issue #1).
 Если проверка удалила сообщение или применила санкцию (вернула True), цепочка
 прерывается и хендлеры не вызываются. Иначе сообщение идёт дальше в роутеры
 (команды, заметки #триггер, magic-стикеры).
+
+issue #7: цепочка подключена и к edited_message, иначе любой фильтр обходился правкой
+сообщения. Для правок не считаются статистика и дубликаты (antispam).
 """
 from __future__ import annotations
 
@@ -46,6 +49,9 @@ MESSAGE_CHECKS: list[Check] = [
     antispam.check_duplicate_spam,
 ]
 
+# Проверки, которые не имеют смысла для отредактированного сообщения.
+SKIP_ON_EDIT: set[Check] = {antispam.check_duplicate_spam}
+
 
 def _is_service(message: Message) -> bool:
     return bool(message.new_chat_members or message.left_chat_member or message.pinned_message)
@@ -66,12 +72,17 @@ class ModerationPipelineMiddleware(BaseMiddleware):
         if settings is None or _is_service(event):
             return await handler(event, data)
 
+        is_edit = event.edit_date is not None
+
         if (event.text or "").startswith("/"):
-            message_deletion.schedule_command_autodelete(event, settings)
+            if not is_edit:
+                message_deletion.schedule_command_autodelete(event, settings)
             return await handler(event, data)
 
         role = data.get("chat_user_role", "member")
         for check in MESSAGE_CHECKS:
+            if is_edit and check in SKIP_ON_EDIT:
+                continue
             try:
                 if await check(event, settings, role):
                     return None  # сообщение удалено/наказано — дальше не передаём
@@ -79,7 +90,7 @@ class ModerationPipelineMiddleware(BaseMiddleware):
                 # Ошибка одной проверки не должна ломать остальные.
                 logger.exception("Moderation check %s failed", check.__name__)
 
-        if event.text:
+        if event.text and not is_edit:
             try:
                 await bump_stat(event.chat.id, "messages_count")
             except Exception:

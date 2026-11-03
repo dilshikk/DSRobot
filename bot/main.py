@@ -15,7 +15,7 @@ import logging
 from aiogram import Dispatcher
 
 from bot.config import settings
-from bot.database import init_models
+from bot.database import close_db, init_models
 from bot.handlers import register_all_routers
 from bot.middlewares.antiflood import AntiFloodMiddleware
 from bot.middlewares.callback_context import CallbackContextMiddleware
@@ -23,6 +23,7 @@ from bot.middlewares.chat_context import ChatContextMiddleware
 from bot.middlewares.moderation_pipeline import ModerationPipelineMiddleware
 from bot.middlewares.throttling import ThrottlingMiddleware
 from bot.services import bot_registry
+from bot.services.cache import close_redis
 from bot.services.clone_runner import create_bot, load_clone_bots
 from bot.services.recurring import restore_recurring_jobs
 from bot.services.scheduler import scheduler, start as start_scheduler
@@ -71,6 +72,18 @@ def setup_middlewares(dp: Dispatcher) -> None:
     dp.callback_query.outer_middleware(CallbackContextMiddleware())
 
 
+async def shutdown_resources() -> None:
+    """
+    Graceful shutdown (issue #13): закрывает пулы Redis и PostgreSQL.
+    Ошибка одного шага не мешает закрыть остальные.
+    """
+    for name, close in (("Redis", close_redis), ("PostgreSQL", close_db)):
+        try:
+            await close()
+        except Exception:
+            logger.exception("Не удалось корректно закрыть соединение: %s", name)
+
+
 async def main() -> None:
     setup_sentry()
     bot = create_bot(settings.bot_token)
@@ -109,6 +122,8 @@ async def main() -> None:
         scheduler.shutdown(wait=False)
         for b in all_bots:
             await b.session.close()
+        await shutdown_resources()
+        logger.info("Бот остановлен, соединения закрыты")
 
 
 if __name__ == "__main__":

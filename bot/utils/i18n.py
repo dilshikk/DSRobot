@@ -33,3 +33,10 @@ def _load(lang: str) -> dict[str, str]:
 def t(lang: str, key: str, **kwargs: object) -> str:
     text = _load(lang).get(key) or _load(FALLBACK_LANG).get(key) or key
     return text.format(**kwargs) if kwargs else text
+
+
+def toggle_text(lang: str, feature_key: str, enabled: bool) -> str:
+    """«<Функция>: вкл./выкл.» для команд-переключателей (/antispam, /approvemode и т.д.).
+    Сокращения «вкл./выкл.» не зависят от рода, поэтому одна строка подходит для всех функций."""
+    state = t(lang, "state_on" if enabled else "state_off")
+    return t(lang, "feature_state", feature=t(lang, feature_key), state=state)

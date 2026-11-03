@@ -1,27 +1,25 @@
 """
 Chat Context Middleware.
 Загружает/создаёт Chat + ChatSettings, сохраняет отправителя в users/chat_users,
-определяет роль отправителя в чате (через Telegram get_chat_member, с кэшем в Redis)
-и прокидывает всё в handler data.
+определяет роль отправителя в чате (Telegram + custom-роли бота, с кэшем в Redis,
+см. services/roles.py) и прокидывает всё в handler data.
 Поддерживает анонимных админов (sender_chat) — Support for anonymous admins.
+
+issue #11: в data кладутся chat_user_role и chat_user_permissions (права custom-роли).
 """
 from __future__ import annotations
 
-import logging
 from typing import Any, Awaitable, Callable
 
 from aiogram import BaseMiddleware
-from aiogram.exceptions import TelegramAPIError
-from aiogram.types import ChatMemberAdministrator, ChatMemberOwner, Message, TelegramObject, User as TgUser
+from aiogram.types import Message, TelegramObject, User as TgUser
 
 from bot.database import SessionFactory
 from bot.services.cache import get_json, set_json
+from bot.services.roles import resolve_access
 from bot.services.settings_service import get_or_create_chat, get_settings
 from bot.services.user_service import ensure_chat_user, upsert_tg_user
 
-logger = logging.getLogger(__name__)
-
-ROLE_CACHE_TTL = 60
 # Как часто (сек) обновлять users/chat_users для одного и того же человека в чате.
 # Без этого каждое сообщение давало бы лишнюю запись в PostgreSQL.
 SEEN_CACHE_TTL = 600
@@ -62,11 +60,14 @@ class ChatContextMiddleware(BaseMiddleware):
 
         if is_anonymous_admin:
             data["chat_user_role"] = "admin"
+            data["chat_user_permissions"] = frozenset()
             data["is_anonymous_admin"] = True
             return await handler(event, data)
 
         if user:
-            data["chat_user_role"] = await self._resolve_role(event, chat.id, user.id, data)
+            access = await resolve_access(data["bot"], chat.id, user.id)
+            data["chat_user_role"] = access.role
+            data["chat_user_permissions"] = access.permissions
 
         return await handler(event, data)
 
@@ -84,29 +85,3 @@ class ChatContextMiddleware(BaseMiddleware):
             await session.commit()
             for tg_user in users:
                 await set_json(f"seen:{chat_id}:{tg_user.id}", 1, ex=SEEN_CACHE_TTL)
-
-    @staticmethod
-    async def _resolve_role(event, chat_id: int, user_id: int, data: dict[str, Any]) -> str:
-        cache_key = f"role:{chat_id}:{user_id}"
-        cached = await get_json(cache_key)
-        if cached is not None:
-            return cached
-
-        bot = data["bot"]
-        try:
-            member = await bot.get_chat_member(chat_id, user_id)
-        except TelegramAPIError as exc:
-            # Безопасный вариант по умолчанию — обычный участник без прав.
-            logger.warning("Cannot resolve role of %s in chat %s: %s", user_id, chat_id, exc)
-            await set_json(cache_key, "member", ex=ROLE_CACHE_TTL)
-            return "member"
-
-        if isinstance(member, ChatMemberOwner):
-            role = "owner"
-        elif isinstance(member, ChatMemberAdministrator):
-            role = "admin"
-        else:
-            role = "member"
-
-        await set_json(cache_key, role, ex=ROLE_CACHE_TTL)
-        return role

@@ -1,5 +1,5 @@
 """Alphabets: ограничение сообщений только разрешёнными алфавитами (борьба с непонятным спамом/флудом).
-Проверка вызывается из moderation_pipeline."""
+Проверка вызывается из moderation_pipeline. Ответы — на языке чата (issue #12)."""
 import re
 import unicodedata
 
@@ -10,6 +10,7 @@ from aiogram.types import Message
 from bot.database import SessionFactory
 from bot.filters.roles import HasRole
 from bot.services.settings_service import update_settings
+from bot.utils.i18n import t
 from bot.utils.permissions import is_privileged
 from bot.utils.telegram import delete_message_safely
 
@@ -23,15 +24,22 @@ SCRIPT_PATTERNS = {
 }
 
 
+def parse_alphabets(raw: str | None) -> list[str]:
+    """'Latin, cyrillic,foo' -> ['latin', 'cyrillic']. Регистр не важен, повторы убираются."""
+    names = (a.strip().lower() for a in (raw or "").split(","))
+    return list(dict.fromkeys(a for a in names if a in SCRIPT_PATTERNS))
+
+
 @router.message(Command("setalphabet"), HasRole("admin"))
-async def set_alphabet(message: Message, command: CommandObject) -> None:
-    allowed = [a.strip() for a in (command.args or "").split(",") if a.strip() in SCRIPT_PATTERNS]
+async def set_alphabet(message: Message, command: CommandObject, lang: str = "ru") -> None:
+    allowed = parse_alphabets(command.args)
     if not allowed:
-        await message.answer(f"Использование: /setalphabet <{'|'.join(SCRIPT_PATTERNS)}>[,...]")
+        # Раньше подсказка была «/setalphabet <cyrillic|...>» и ломала HTML-разметку.
+        await message.answer(t(lang, "setalphabet_usage", options=" | ".join(SCRIPT_PATTERNS)))
         return
     async with SessionFactory() as session:
         await update_settings(session, message.chat.id, "alphabets", {"enabled": True, "allowed": allowed})
-    await message.answer(f"\u2705 Разрешённые алфавиты: {', '.join(allowed)}")
+    await message.answer(t(lang, "setalphabet_done", alphabets=", ".join(allowed)))
 
 
 async def check_alphabet(message: Message, chat_settings: dict, chat_user_role: str) -> bool:

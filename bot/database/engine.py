@@ -21,6 +21,16 @@ async def init_models() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         await _migrate_bot_clones(conn)
+        await _migrate_recurring_messages(conn)
+
+
+async def _migrate_recurring_messages(conn: AsyncConnection) -> None:
+    """
+    Временная идемпотентная миграция (issue #10), пока нет Alembic.
+    create_all не добавляет колонки в существующие таблицы, а без bot_id
+    /addrecurring и восстановление рассылок при старте падают.
+    """
+    await conn.execute(text("ALTER TABLE recurring_messages ADD COLUMN IF NOT EXISTS bot_id BIGINT"))
 
 
 async def _migrate_bot_clones(conn: AsyncConnection) -> None:

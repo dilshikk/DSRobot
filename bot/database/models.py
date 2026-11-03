@@ -194,6 +194,9 @@ class RecurringMessage(Base):
     cron_expression: Mapped[str] = mapped_column(String(64))  # например "0 9 * * *"
     next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Какой бот (основной или клон) отправляет рассылку (issue #10).
+    # NULL у старых записей — их отправляет основной бот (см. services/bot_registry.py).
+    bot_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
 
 
 class PersonalCommand(Base):

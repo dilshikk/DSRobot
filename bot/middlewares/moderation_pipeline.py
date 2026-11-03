@@ -17,6 +17,8 @@ issue #7: цепочка подключена и к edited_message, иначе �
 
 issue #34: команды тоже проходят проверки. Раньше любой текст, начинающийся с "/",
 сразу уходил в хендлеры, и "/ купить https://spam.ru" обходил все фильтры.
+
+issue #47: в статистику попадают и медиа без текста; день считается по часовому поясу чата.
 """
 from __future__ import annotations
 
@@ -119,9 +121,10 @@ class ModerationPipelineMiddleware(BaseMiddleware):
                 message_deletion.schedule_command_autodelete(event, settings)
             return await handler(event, data)
 
-        if event.text and not is_edit:
+        # Любое сообщение участника, включая фото, стикеры и голосовые без текста (issue #47).
+        if not is_edit:
             try:
-                await bump_stat(event.chat.id, "messages_count")
+                await bump_stat(event.chat.id, "messages_count", utc_offset=settings.get("utc_offset", 0))
             except Exception:
                 logger.exception("Failed to bump message stats")
 

@@ -17,8 +17,9 @@ BATCH_SIZE = 5
 @router.message(Command("tagall"), HasRole("admin"))
 async def tag_all(message, command: CommandObject) -> None:
     async with SessionFactory() as session:
+        # Вышедших участников не тегаем (issue #47).
         user_ids = (await session.execute(
-            select(ChatUser.user_id).where(ChatUser.chat_id == message.chat.id)
+            select(ChatUser.user_id).where(ChatUser.chat_id == message.chat.id, ChatUser.left_at.is_(None))
         )).scalars().all()
 
     if not user_ids:

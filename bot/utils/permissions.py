@@ -20,6 +20,11 @@ def role_at_least(role: str, minimum: str) -> bool:
     return ROLE_ORDER.get(role, 0) >= ROLE_ORDER.get(minimum, 0)
 
 
+def is_privileged(role: str) -> bool:
+    """admin/owner/developer — на них не распространяются авто-проверки модерации."""
+    return role_at_least(role, "admin")
+
+
 # Права, которые может выдавать custom-роль (используются в редакторе ролей / permissions_editor)
 CUSTOM_ROLE_PERMISSIONS = [
     "ban", "unban", "mute", "unmute", "kick", "warn", "unwarn",

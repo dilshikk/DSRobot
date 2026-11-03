@@ -1,7 +1,8 @@
-"""Link settings: удаление/санкция за ссылки, whitelist доменов, allow_admins."""
+"""Link settings: удаление/санкция за ссылки, whitelist доменов, allow_admins.
+Проверка вызывается из moderation_pipeline."""
 import re
 
-from aiogram import Router, F
+from aiogram import Router
 from aiogram.filters import Command, CommandObject
 from aiogram.types import Message
 
@@ -9,6 +10,7 @@ from bot.database import SessionFactory
 from bot.filters.roles import HasRole
 from bot.services.moderation_actions import apply_sanction
 from bot.services.settings_service import update_settings
+from bot.utils.permissions import is_privileged
 
 router = Router(name="link_settings")
 
@@ -39,19 +41,23 @@ async def whitelist_domain(message: Message, command: CommandObject, chat_settin
     await message.answer(f"\u2705 Домен «{domain}» добавлен в белый список.")
 
 
-@router.message(F.text, ~F.text.startswith("/"))
-async def enforce_links(message: Message, chat_settings: dict, chat_user_role: str = "member") -> None:
+async def check_links(message: Message, chat_settings: dict, chat_user_role: str) -> bool:
     cfg = chat_settings.get("link_settings", {})
-    if cfg.get("action", "delete") == "off" or chat_user_role in ("admin", "owner", "developer") and cfg.get("allow_admins", True):
-        return
-    match = URL_RE.search(message.text or "")
+    action = cfg.get("action", "delete")
+    if not message.text or action == "off":
+        return False
+    if is_privileged(chat_user_role) and cfg.get("allow_admins", True):
+        return False
+    match = URL_RE.search(message.text)
     if not match:
-        return
+        return False
     if any(domain in match.group(0).lower() for domain in cfg.get("whitelist", [])):
-        return
+        return False
+
     try:
         await message.delete()
     except Exception:
         pass
-    if cfg.get("action") not in ("delete", None):
-        await apply_sanction(message.bot, message.chat.id, message.from_user.id, cfg["action"], "Запрещённая ссылка", 0)
+    if action != "delete":
+        await apply_sanction(message.bot, message.chat.id, message.from_user.id, action, "Запрещённая ссылка", 0)
+    return True

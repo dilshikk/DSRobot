@@ -1,7 +1,9 @@
 """Welcome: приветствие новых участников, с очисткой предыдущего приветствия."""
-from aiogram import Router, F
+from __future__ import annotations
+
+from aiogram import Bot, Router
 from aiogram.filters import Command, CommandObject
-from aiogram.types import Message
+from aiogram.types import Message, User
 
 from bot.database import SessionFactory
 from bot.filters.roles import HasRole
@@ -28,22 +30,22 @@ async def welcome_off(message: Message) -> None:
     await message.answer("Приветствие выключено.")
 
 
-@router.message(F.new_chat_members)
-async def greet_new_members(message: Message, chat_settings: dict) -> None:
+async def greet_members(bot: Bot, chat_id: int, chat_settings: dict, members: list[User]) -> None:
+    """Вызывается из service_events (вступление) и из captcha (после прохождения проверки)."""
     cfg = chat_settings.get("welcome", {})
-    if not cfg.get("enabled", True):
+    if not members or not cfg.get("enabled", True):
         return
 
     if cfg.get("clean_old"):
-        old_id = await redis.get(f"lastwelcome:{message.chat.id}")
+        old_id = await redis.get(f"lastwelcome:{chat_id}")
         if old_id:
             try:
-                await message.bot.delete_message(message.chat.id, int(old_id))
+                await bot.delete_message(chat_id, int(old_id))
             except Exception:
                 pass
 
-    for member in message.new_chat_members:
+    for member in members:
         text = cfg.get("text", "Добро пожаловать, {mention}!").format(mention=member.mention_html())
-        sent = await message.answer(text, parse_mode="HTML")
+        sent = await bot.send_message(chat_id, text, parse_mode="HTML")
         if cfg.get("clean_old"):
-            await redis.set(f"lastwelcome:{message.chat.id}", sent.message_id, ex=86400)
+            await redis.set(f"lastwelcome:{chat_id}", sent.message_id, ex=86400)

@@ -1,11 +1,15 @@
-"""Blocks settings: forwards / links / usernames-mentions / bots / inline-queries."""
-from aiogram import Router, F
+"""Blocks settings: forwards / links / usernames-mentions / bots / inline-queries.
+
+Проверка пересылок вызывается из moderation_pipeline, блок ботов — из service_events (issue #1).
+"""
+from aiogram import Bot, Router
 from aiogram.filters import Command, CommandObject
-from aiogram.types import Message
+from aiogram.types import Message, User
 
 from bot.database import SessionFactory
 from bot.filters.roles import HasRole
 from bot.services.settings_service import update_settings
+from bot.utils.permissions import is_privileged
 
 router = Router(name="blocks")
 
@@ -34,23 +38,36 @@ async def unblock_toggle(message: Message, command: CommandObject) -> None:
     await message.answer(f"\u2705 Блокировка «{key}» выключена.")
 
 
-@router.message(F.forward_date | F.forward_from | F.forward_from_chat)
-async def enforce_forward_block(message: Message, chat_settings: dict, chat_user_role: str = "member") -> None:
-    if chat_settings.get("blocks", {}).get("forwards") and chat_user_role not in ("admin", "owner", "developer"):
-        try:
-            await message.delete()
-        except Exception:
-            pass
+def _is_forwarded(message: Message) -> bool:
+    # В Bot API 7.0+ информация о пересылке лежит в forward_origin (forward_from* устарели).
+    return bool(getattr(message, "forward_origin", None) or getattr(message, "forward_date", None))
 
 
-@router.message(F.new_chat_members)
-async def enforce_bot_block(message: Message, chat_settings: dict) -> None:
+async def check_forward_block(message: Message, chat_settings: dict, chat_user_role: str) -> bool:
+    if not chat_settings.get("blocks", {}).get("forwards") or is_privileged(chat_user_role):
+        return False
+    if not _is_forwarded(message):
+        return False
+    try:
+        await message.delete()
+    except Exception:
+        pass
+    return True
+
+
+async def kick_blocked_bots(bot: Bot, chat_id: int, chat_settings: dict, members: list[User]) -> list[User]:
+    """Удаляет добавленных ботов (если включено) и возвращает оставшихся участников."""
     if not chat_settings.get("blocks", {}).get("bots"):
-        return
-    for member in message.new_chat_members:
-        if member.is_bot:
+        return list(members)
+    remaining: list[User] = []
+    for member in members:
+        # Не трогаем самого себя — иначе бот выкинет себя при добавлении в группу.
+        if member.is_bot and member.id != bot.id:
             try:
-                await message.chat.ban(member.id)
-                await message.chat.unban(member.id)
+                await bot.ban_chat_member(chat_id, member.id)
+                await bot.unban_chat_member(chat_id, member.id)
+                continue
             except Exception:
                 pass
+        remaining.append(member)
+    return remaining

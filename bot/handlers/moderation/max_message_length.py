@@ -1,11 +1,12 @@
-"""Max message length settings."""
-from aiogram import Router, F
+"""Max message length settings. Проверка вызывается из moderation_pipeline."""
+from aiogram import Router
 from aiogram.filters import Command, CommandObject
 from aiogram.types import Message
 
 from bot.database import SessionFactory
 from bot.filters.roles import HasRole
 from bot.services.settings_service import update_settings
+from bot.utils.permissions import is_privileged
 
 router = Router(name="max_message_length")
 
@@ -23,13 +24,14 @@ async def set_max_len(message: Message, command: CommandObject) -> None:
     await message.answer(f"\u2705 Максимальная длина сообщения: {limit or '\u2014 (выкл.)'}")
 
 
-@router.message(F.text, ~F.text.startswith("/"))
-async def enforce_max_length(message: Message, chat_settings: dict, chat_user_role: str = "member") -> None:
+async def check_max_length(message: Message, chat_settings: dict, chat_user_role: str) -> bool:
     cfg = chat_settings.get("max_message_length", {})
-    if not cfg.get("enabled") or chat_user_role in ("admin", "owner", "developer"):
-        return
-    if len(message.text or "") > cfg.get("limit", 4000):
-        try:
-            await message.delete()
-        except Exception:
-            pass
+    if not message.text or not cfg.get("enabled") or is_privileged(chat_user_role):
+        return False
+    if len(message.text) <= cfg.get("limit", 4000):
+        return False
+    try:
+        await message.delete()
+    except Exception:
+        pass
+    return True

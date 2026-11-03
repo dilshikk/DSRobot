@@ -1,14 +1,16 @@
-"""Alphabets: ограничение сообщений только разрешёнными алфавитами (борьба с непонятным спамом/флудом)."""
+"""Alphabets: ограничение сообщений только разрешёнными алфавитами (борьба с непонятным спамом/флудом).
+Проверка вызывается из moderation_pipeline."""
 import re
 import unicodedata
 
-from aiogram import Router, F
+from aiogram import Router
 from aiogram.filters import Command, CommandObject
 from aiogram.types import Message
 
 from bot.database import SessionFactory
 from bot.filters.roles import HasRole
 from bot.services.settings_service import update_settings
+from bot.utils.permissions import is_privileged
 
 router = Router(name="alphabets")
 
@@ -31,19 +33,20 @@ async def set_alphabet(message: Message, command: CommandObject) -> None:
     await message.answer(f"\u2705 Разрешённые алфавиты: {', '.join(allowed)}")
 
 
-@router.message(F.text, ~F.text.startswith("/"))
-async def enforce_alphabet(message: Message, chat_settings: dict, chat_user_role: str = "member") -> None:
+async def check_alphabet(message: Message, chat_settings: dict, chat_user_role: str) -> bool:
     cfg = chat_settings.get("alphabets", {})
-    if not cfg.get("enabled") or chat_user_role in ("admin", "owner", "developer"):
-        return
-    letters = [c for c in (message.text or "") if unicodedata.category(c).startswith("L")]
+    if not message.text or not cfg.get("enabled") or is_privileged(chat_user_role):
+        return False
+    letters = [c for c in message.text if unicodedata.category(c).startswith("L")]
     if not letters:
-        return
+        return False
     allowed_patterns = [SCRIPT_PATTERNS[a] for a in cfg.get("allowed", []) if a in SCRIPT_PATTERNS]
     if not allowed_patterns:
-        return
-    if not any(any(p.match(c) for p in allowed_patterns) for c in letters):
-        try:
-            await message.delete()
-        except Exception:
-            pass
+        return False
+    if any(any(p.match(c) for p in allowed_patterns) for c in letters):
+        return False
+    try:
+        await message.delete()
+    except Exception:
+        pass
+    return True

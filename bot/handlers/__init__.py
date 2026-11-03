@@ -1,6 +1,10 @@
 """
 Регистрация всех роутеров бота. Каждый модуль из ТЗ — отдельный файл-роутер,
 что соответствует Router/Dispatcher слою из архитектуры (см. README).
+
+Авто-проверки обычных сообщений (antispam, banned words, ссылки и т.д.) больше не
+являются хендлерами — они выполняются в bot/middlewares/moderation_pipeline.py.
+Служебные события (вход/выход/закреп) обрабатывает один роутер service_events.
 """
 from aiogram import Dispatcher
 
@@ -11,7 +15,7 @@ from bot.handlers.moderation import (
     max_message_length, media_blocks, message_deletion, moderation_commands,
     night_mode, roles_permissions, warns,
 )
-from bot.handlers.welcome import captcha, goodbye, rules, welcome
+from bot.handlers.welcome import captcha, goodbye, rules, service_events, welcome
 from bot.handlers.chat import (
     admin_tag, checks_settings, discussion_group, group_statistics, log_channel,
     magic_stickers_gifs, members_management, permissions_editor, personal_commands,
@@ -20,6 +24,8 @@ from bot.handlers.chat import (
 from bot.handlers.misc import alphabets, crypto_prices
 
 ALL_ROUTERS = [
+    # service events: единственный обработчик new_chat_members / left_chat_member / pinned_message
+    service_events.router,
     # core
     start_help.router, clones.router, time_settings.router, lang_settings.router,
     # moderation

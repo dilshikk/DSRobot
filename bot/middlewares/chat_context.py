@@ -11,9 +11,11 @@ issue #12: в data["lang"] кладётся язык ответов — Chat.lan
 """
 from __future__ import annotations
 
+import logging
 from typing import Any, Awaitable, Callable
 
-from aiogram import BaseMiddleware
+from aiogram import BaseMiddleware, Bot
+from aiogram.exceptions import TelegramAPIError
 from aiogram.types import Message, TelegramObject, User as TgUser
 
 from bot.config import settings
@@ -27,6 +29,33 @@ from bot.utils.i18n import normalize_lang
 # Как часто (сек) обновлять users/chat_users для одного и того же человека в чате.
 # Без этого каждое сообщение давало бы лишнюю запись в PostgreSQL.
 SEEN_CACHE_TTL = 600
+LINKED_CHAT_CACHE_TTL = 3600
+
+logger = logging.getLogger(__name__)
+
+
+async def linked_chat_id(bot: Bot, chat_id: int) -> int | None:
+    """id канала, к которому группа привязана как обсуждение (кэш в Redis, 0 = не привязана)."""
+    key = f"linked_chat:{chat_id}"
+    cached = await get_json(key)
+    if cached is None:
+        try:
+            cached = (await bot.get_chat(chat_id)).linked_chat_id or 0
+        except TelegramAPIError as exc:
+            logger.warning("Cannot get linked chat for %s: %s", chat_id, exc)
+            return None
+        await set_json(key, cached, ex=LINKED_CHAT_CACHE_TTL)
+    return cached or None
+
+
+async def is_linked_channel_post(bot: Bot, message: Message) -> bool:
+    """Автопересылка поста канала или сообщение от имени привязанного канала (issue #44)."""
+    if message.is_automatic_forward:
+        return True
+    sender = message.sender_chat
+    if sender is None or sender.type != "channel" or sender.id == message.chat.id:
+        return False
+    return await linked_chat_id(bot, message.chat.id) == sender.id
 
 
 def _extract_message(event: TelegramObject) -> Message | None:
@@ -56,6 +85,8 @@ class ChatContextMiddleware(BaseMiddleware):
 
         user = message.from_user
         is_anonymous_admin = bool(message.sender_chat and message.sender_chat.id == chat.id)
+        # Посты привязанного канала не модерируются, но и прав админа в группе не дают.
+        data["is_linked_channel"] = await is_linked_channel_post(data["bot"], message)
 
         async with SessionFactory() as session:
             db_chat = await get_or_create_chat(session, chat.id, chat.title or "", chat.type)
@@ -64,7 +95,7 @@ class ChatContextMiddleware(BaseMiddleware):
             data["chat_settings"] = {**await get_settings(session, chat.id), "utc_offset": db_chat.utc_offset or 0}
 
             # Анонимный админ приходит от служебного аккаунта GroupAnonymousBot — его не сохраняем.
-            if user and not is_anonymous_admin:
+            if user and not is_anonymous_admin and not data["is_linked_channel"]:
                 await self._remember_users(session, chat.id, [user, *(message.new_chat_members or [])])
 
         if is_anonymous_admin:

@@ -1,6 +1,7 @@
 """Регрессионные тесты для issue #1: при вступлении в чат выполняются все шаги
 (блок ботов → капча → приветствие → статистика → удаление), а не только первый.
-issue #12: язык чата доходит до капчи, приветствия и прощания."""
+issue #12: язык чата доходит до капчи, приветствия и прощания.
+issue #47: вышедший участник отмечается, статистика идёт по часовому поясу чата."""
 import asyncio
 from types import SimpleNamespace
 
@@ -34,11 +35,15 @@ def calls(monkeypatch):
         log.append(("goodbye", member.id))
         log.append(("goodbye_lang", lang))
 
-    async def bump_stat(chat_id, field):
+    async def bump_stat(chat_id, field, utc_offset=0):
         log.append(("stats", field))
+        log.append(("stats_offset", utc_offset))
 
     async def delete_service_message(message, settings):
         log.append(("cleanup",))
+
+    async def forget_member(chat_id, user_id):
+        log.append(("left", user_id))
 
     for name, fn in {
         "kick_blocked_bots": kick_blocked_bots,
@@ -47,13 +52,14 @@ def calls(monkeypatch):
         "farewell": farewell,
         "bump_stat": bump_stat,
         "delete_service_message": delete_service_message,
+        "forget_member": forget_member,
     }.items():
         monkeypatch.setattr(se, name, fn)
     return log
 
 
 def _steps(calls):
-    return [c[0] for c in calls if not c[0].endswith("_lang")]
+    return [c[0] for c in calls if not c[0].endswith(("_lang", "_offset"))]
 
 
 def _join_message(*members):
@@ -87,6 +93,17 @@ def test_chat_language_reaches_goodbye(calls):
     asyncio.run(se.on_member_left(msg, chat_settings={}, lang="en"))
 
     assert ("goodbye_lang", "en") in calls
+
+
+def test_leave_marks_member_left_and_counts(calls):
+    msg = SimpleNamespace(bot=object(), chat=SimpleNamespace(id=-100), left_chat_member=_user(5))
+
+    asyncio.run(se.on_member_left(msg, chat_settings={"utc_offset": 3}))
+
+    assert _steps(calls) == ["goodbye", "left", "stats", "cleanup"]
+    assert ("left", 5) in calls
+    assert ("stats", "leaves_count") in calls
+    assert ("stats_offset", 3) in calls
 
 
 def test_failing_step_does_not_cancel_the_rest(calls, monkeypatch):

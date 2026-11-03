@@ -1,37 +1,26 @@
 """Group statistics: дневные счётчики + команда /stats.
 
-Счётчики увеличиваются из moderation_pipeline (сообщения) и service_events
-(вступления/выходы) — отдельные хендлеры перехватывали события у других модулей (issue #1).
+Счётчики увеличиваются из moderation_pipeline (сообщения), service_events
+(вступления/выходы) и apply_sanction (санкции). Сама логика — в services/stats.py (issue #47).
 """
-from datetime import date
-
 from aiogram import Router
 from aiogram.filters import Command
+from aiogram.types import Message
 from sqlalchemy import select
 
 from bot.database import SessionFactory
 from bot.database.models import GroupStat
 from bot.filters.roles import HasRole
+from bot.services.stats import bump_stat, chat_today
+
+__all__ = ["router", "bump_stat"]
 
 router = Router(name="group_statistics")
 
 
-async def bump_stat(chat_id: int, field: str) -> None:
-    today = date.today()
-    async with SessionFactory() as session:
-        row = (await session.execute(
-            select(GroupStat).where(GroupStat.chat_id == chat_id, GroupStat.date == today)
-        )).scalar_one_or_none()
-        if row is None:
-            row = GroupStat(chat_id=chat_id, date=today)
-            session.add(row)
-        setattr(row, field, (getattr(row, field) or 0) + 1)
-        await session.commit()
-
-
 @router.message(Command("stats"), HasRole("admin"))
-async def show_stats(message) -> None:
-    today = date.today()
+async def show_stats(message: Message, chat_settings: dict | None = None) -> None:
+    today = chat_today((chat_settings or {}).get("utc_offset", 0))
     async with SessionFactory() as session:
         row = (await session.execute(
             select(GroupStat).where(GroupStat.chat_id == message.chat.id, GroupStat.date == today)

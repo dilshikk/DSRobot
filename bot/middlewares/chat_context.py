@@ -8,6 +8,8 @@ Chat Context Middleware.
 issue #11: в data кладутся chat_user_role и chat_user_permissions (права custom-роли).
 issue #12: в data["lang"] кладётся язык ответов — Chat.lang в группах (/setlang),
 язык Telegram-клиента пользователя в личке.
+issue #47: активность отмечается в ChatUser.last_seen_at (по чату), а не только в глобальном
+User.last_seen; написавший участник считается снова состоящим в чате (left_at = NULL).
 """
 from __future__ import annotations
 
@@ -23,7 +25,7 @@ from bot.database import SessionFactory
 from bot.services.cache import get_json, set_json
 from bot.services.roles import resolve_access
 from bot.services.settings_service import get_or_create_chat, get_settings
-from bot.services.user_service import ensure_chat_user, upsert_tg_user
+from bot.services.user_service import seen_cache_key, touch_chat_user, upsert_tg_user
 from bot.utils.i18n import normalize_lang
 
 # Как часто (сек) обновлять users/chat_users для одного и того же человека в чате.
@@ -113,15 +115,14 @@ class ChatContextMiddleware(BaseMiddleware):
 
     @staticmethod
     async def _remember_users(session, chat_id: int, users: list[TgUser]) -> None:
-        changed = False
+        fresh: list[TgUser] = []
         for tg_user in {u.id: u for u in users}.values():
-            seen_key = f"seen:{chat_id}:{tg_user.id}"
-            if await get_json(seen_key) is not None:
+            if await get_json(seen_cache_key(chat_id, tg_user.id)) is not None:
                 continue
             await upsert_tg_user(session, tg_user)
-            await ensure_chat_user(session, chat_id, tg_user.id)
-            changed = True
-        if changed:
+            await touch_chat_user(session, chat_id, tg_user.id)
+            fresh.append(tg_user)
+        if fresh:
             await session.commit()
-            for tg_user in users:
-                await set_json(f"seen:{chat_id}:{tg_user.id}", 1, ex=SEEN_CACHE_TTL)
+            for tg_user in fresh:
+                await set_json(seen_cache_key(chat_id, tg_user.id), 1, ex=SEEN_CACHE_TTL)

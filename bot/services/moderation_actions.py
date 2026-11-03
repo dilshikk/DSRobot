@@ -11,6 +11,9 @@ issue #9:
 - если Telegram отклонил действие, в AuditLog ничего не пишется (санкции не было).
 
 issue #12: текст ошибки возвращается на языке чата (аргумент lang).
+
+issue #47: санкции увеличивают GroupStat.sanctions_count и не обновляют last_seen цели;
+бан и кик отмечают участника вышедшим.
 """
 from __future__ import annotations
 
@@ -24,6 +27,7 @@ from aiogram.types import ChatPermissions
 
 from bot.database import SessionFactory
 from bot.database.models import AuditLog, Chat
+from bot.services.stats import SANCTION_ACTIONS, add_stat
 from bot.services.user_service import ensure_chat_user, upsert_user
 from bot.utils.i18n import t
 
@@ -125,9 +129,10 @@ async def apply_sanction(
     lang: str = "ru",
 ) -> str | None:
     """Применяет санкцию. Возвращает текст ошибки для админа или None при успехе."""
+    now = datetime.now(timezone.utc)
     until = None
     if duration_minutes:
-        until = datetime.now(timezone.utc) + timedelta(minutes=duration_minutes)
+        until = now + timedelta(minutes=duration_minutes)
 
     error = await _call_telegram(bot, chat_id, user_id, action, until, lang)
     if error:
@@ -141,7 +146,8 @@ async def apply_sanction(
 
         # Цель санкции могла ни разу не писать в чат (санкция по id / reply на старое
         # сообщение) — гарантируем наличие User (FK) и ChatUser с warns=0 (issue #4).
-        await upsert_user(session, user_id)
+        # touch=False: санкция — не активность цели, иначе забаненный выглядит активным (issue #47).
+        await upsert_user(session, user_id, touch=False)
         cu = await ensure_chat_user(session, chat_id, user_id)
 
         if action == "warn":
@@ -150,13 +156,18 @@ async def apply_sanction(
             cu.muted_until = until
         elif action == "ban":
             cu.banned_until = until
+            cu.left_at = now
+        elif action == "kick":
+            cu.left_at = now
         elif action in ("unmute", "unban"):
             cu.muted_until = None
             cu.banned_until = None
 
-        await session.commit()
-
         chat = await session.get(Chat, chat_id)
+        if chat is not None and action in SANCTION_ACTIONS:
+            await add_stat(session, chat_id, "sanctions_count", utc_offset=chat.utc_offset or 0)
+
+        await session.commit()
 
     if chat and chat.log_channel_id:
         await _send_to_log_channel(bot, chat.log_channel_id, chat_id, user_id, action, reason, actor_user_id)

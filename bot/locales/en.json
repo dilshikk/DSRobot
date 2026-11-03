@@ -30,6 +30,11 @@
   "captcha_wrong": "Wrong. Attempts left: {left}",
   "captcha_failed_reason": "Captcha failed",
   "captcha_timeout_reason": "Captcha not solved in time",
+  "captcha_timeout_usage": "Usage: /captchatimeout SECONDS ({min}–{max})",
+  "captcha_timeout_set": "✅ Captcha time limit: {seconds} sec.",
+  "captcha_kick_usage": "Usage: /captchakick on|off",
+  "captcha_kick_on": "✅ Users who fail the captcha will be kicked.",
+  "captcha_kick_off": "✅ Users who fail the captcha are not kicked: the restriction is lifted after the timeout.",
 
   "flood_usage": "Usage: /setflood MESSAGES SECONDS [mute|kick|ban] [MUTE_MINUTES]\nExample: /setflood 7 8 mute 30",
   "flood_invalid_limits": "Messages must be at least 1, seconds from 1 to {max_seconds}.",

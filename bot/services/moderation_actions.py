@@ -3,17 +3,28 @@
 и командами модерации, и авто-модулями (antiflood, antispam, banned_words, anti_nsfw).
 Пишет в AuditLog и, если настроен log_channel, шлёт туда уведомление —
 Log channel feature.
+
+issue #9:
+- пользовательский ввод (reason) экранируется перед отправкой в HTML-лог;
+- ошибки Telegram больше не глушатся молча: они логируются, а apply_sanction
+  возвращает понятный текст ошибки, чтобы команда могла сообщить админу;
+- если Telegram отклонил действие, в AuditLog ничего не пишется (санкции не было).
 """
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta, timezone
+from html import escape
 
 from aiogram import Bot
+from aiogram.exceptions import TelegramAPIError, TelegramBadRequest, TelegramForbiddenError
 from aiogram.types import ChatPermissions
 
 from bot.database import SessionFactory
 from bot.database.models import AuditLog, Chat
 from bot.services.user_service import ensure_chat_user, upsert_user
+
+logger = logging.getLogger(__name__)
 
 MUTED_PERMISSIONS = ChatPermissions(can_send_messages=False)
 UNMUTED_PERMISSIONS = ChatPermissions(
@@ -21,20 +32,28 @@ UNMUTED_PERMISSIONS = ChatPermissions(
     can_send_photos=True, can_send_videos=True, can_send_other_messages=True,
 )
 
+# Telegram ограничивает сообщение 4096 символами — не даём длинной причине сломать лог.
+MAX_REASON_LENGTH = 1000
 
-async def apply_sanction(
-    bot: Bot,
-    chat_id: int,
-    user_id: int,
-    action: str,
-    reason: str = "",
-    actor_user_id: int = 0,
-    duration_minutes: int | None = None,
-) -> None:
-    until = None
-    if duration_minutes:
-        until = datetime.now(timezone.utc) + timedelta(minutes=duration_minutes)
+NO_RIGHTS_ERROR = (
+    "У бота не хватает прав. Выдайте ему права администратора "
+    "на блокировку участников и удаление сообщений."
+)
 
+
+def _describe_bad_request(exc: TelegramBadRequest) -> str:
+    text = exc.message.lower()
+    if "not enough rights" in text or "have no rights" in text:
+        return NO_RIGHTS_ERROR
+    if "administrator" in text or "chat owner" in text:
+        return "Нельзя применить это действие к администратору чата."
+    if "user not found" in text or "participant_id_invalid" in text:
+        return "Пользователь не найден в этом чате."
+    return f"Telegram отклонил действие: {escape(exc.message)}"
+
+
+async def _call_telegram(bot: Bot, chat_id: int, user_id: int, action: str, until: datetime | None) -> str | None:
+    """Выполняет действие в Telegram. Возвращает текст ошибки или None при успехе."""
     try:
         if action == "ban":
             await bot.ban_chat_member(chat_id, user_id, until_date=until)
@@ -47,10 +66,38 @@ async def apply_sanction(
             await bot.restrict_chat_member(chat_id, user_id, UNMUTED_PERMISSIONS)
         elif action == "unban":
             await bot.unban_chat_member(chat_id, user_id, only_if_banned=True)
-        # action == "warn" не требует Telegram API вызова — только счётчик в БД
-    except Exception:
-        # Недостаточно прав у бота / пользователь уже вышел и т.п. — не роняем обработчик.
-        pass
+        # action == "warn" не требует вызова Telegram API — только счётчик в БД
+    except TelegramForbiddenError as exc:
+        logger.warning("Sanction %s for user %s in chat %s forbidden: %s", action, user_id, chat_id, exc)
+        return "Бот не может выполнить действие: его исключили из чата или лишили прав."
+    except TelegramBadRequest as exc:
+        logger.warning("Sanction %s for user %s in chat %s rejected: %s", action, user_id, chat_id, exc)
+        return _describe_bad_request(exc)
+    except TelegramAPIError as exc:
+        logger.error("Sanction %s for user %s in chat %s failed: %s", action, user_id, chat_id, exc)
+        return "Не удалось выполнить действие из-за ошибки Telegram. Попробуйте ещё раз."
+    return None
+
+
+async def apply_sanction(
+    bot: Bot,
+    chat_id: int,
+    user_id: int,
+    action: str,
+    reason: str = "",
+    actor_user_id: int = 0,
+    duration_minutes: int | None = None,
+) -> str | None:
+    """Применяет санкцию. Возвращает текст ошибки для админа или None при успехе."""
+    until = None
+    if duration_minutes:
+        until = datetime.now(timezone.utc) + timedelta(minutes=duration_minutes)
+
+    error = await _call_telegram(bot, chat_id, user_id, action, until)
+    if error:
+        return error
+
+    reason = (reason or "")[:MAX_REASON_LENGTH]
 
     async with SessionFactory() as session:
         session.add(AuditLog(chat_id=chat_id, target_user_id=user_id, actor_user_id=actor_user_id,
@@ -76,13 +123,23 @@ async def apply_sanction(
         chat = await session.get(Chat, chat_id)
 
     if chat and chat.log_channel_id:
-        try:
-            await bot.send_message(
-                chat.log_channel_id,
-                f"\U0001f6e1 <b>{action.upper()}</b>\n"
-                f"Chat: <code>{chat_id}</code>\nUser: <code>{user_id}</code>\n"
-                f"By: <code>{actor_user_id or 'auto'}</code>\nReason: {reason or '—'}",
-                parse_mode="HTML",
-            )
-        except Exception:
-            pass
+        await _send_to_log_channel(bot, chat.log_channel_id, chat_id, user_id, action, reason, actor_user_id)
+    return None
+
+
+async def _send_to_log_channel(
+    bot: Bot, log_channel_id: int, chat_id: int, user_id: int, action: str, reason: str, actor_user_id: int,
+) -> None:
+    # Всё, что может прийти от пользователя, экранируется: иначе "<" или "&" в причине
+    # ломают HTML-разметку, и Telegram отвечает "can't parse entities".
+    text = (
+        f"\U0001f6e1 <b>{escape(action.upper())}</b>\n"
+        f"Chat: <code>{chat_id}</code>\nUser: <code>{user_id}</code>\n"
+        f"By: <code>{actor_user_id or 'auto'}</code>\n"
+        f"Reason: {escape(reason) if reason else '—'}"
+    )
+    try:
+        await bot.send_message(log_channel_id, text, parse_mode="HTML")
+    except TelegramAPIError as exc:
+        logger.warning("Failed to write %s for chat %s to log channel %s: %s",
+                       action, chat_id, log_channel_id, exc)

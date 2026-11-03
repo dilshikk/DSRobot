@@ -48,7 +48,8 @@ def env(monkeypatch):
     stats: list[str] = []
     autodelete: list[int] = []
 
-    async def fake_bump(chat_id, field):
+    # Сигнатура как у настоящего bump_stat (issue #47 добавил utc_offset).
+    async def fake_bump(chat_id, field, utc_offset=0):
         stats.append(field)
 
     monkeypatch.setattr(mp, "bump_stat", fake_bump)

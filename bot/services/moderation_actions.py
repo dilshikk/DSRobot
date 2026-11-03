@@ -9,6 +9,8 @@ issue #9:
 - ошибки Telegram больше не глушатся молча: они логируются, а apply_sanction
   возвращает понятный текст ошибки, чтобы команда могла сообщить админу;
 - если Telegram отклонил действие, в AuditLog ничего не пишется (санкции не было).
+
+issue #12: текст ошибки возвращается на языке чата (аргумент lang).
 """
 from __future__ import annotations
 
@@ -23,6 +25,7 @@ from aiogram.types import ChatPermissions
 from bot.database import SessionFactory
 from bot.database.models import AuditLog, Chat
 from bot.services.user_service import ensure_chat_user, upsert_user
+from bot.utils.i18n import t
 
 logger = logging.getLogger(__name__)
 
@@ -35,24 +38,24 @@ UNMUTED_PERMISSIONS = ChatPermissions(
 # Telegram ограничивает сообщение 4096 символами — не даём длинной причине сломать лог.
 MAX_REASON_LENGTH = 1000
 
-NO_RIGHTS_ERROR = (
-    "У бота не хватает прав. Выдайте ему права администратора "
-    "на блокировку участников и удаление сообщений."
-)
+# Оставлено для обратной совместимости импортов.
+NO_RIGHTS_ERROR = t("ru", "sanction_no_rights")
 
 
-def _describe_bad_request(exc: TelegramBadRequest) -> str:
+def _describe_bad_request(exc: TelegramBadRequest, lang: str) -> str:
     text = exc.message.lower()
     if "not enough rights" in text or "have no rights" in text:
-        return NO_RIGHTS_ERROR
+        return t(lang, "sanction_no_rights")
     if "administrator" in text or "chat owner" in text:
-        return "Нельзя применить это действие к администратору чата."
+        return t(lang, "sanction_admin")
     if "user not found" in text or "participant_id_invalid" in text:
-        return "Пользователь не найден в этом чате."
-    return f"Telegram отклонил действие: {escape(exc.message)}"
+        return t(lang, "sanction_user_not_found")
+    return t(lang, "sanction_rejected", error=escape(exc.message))
 
 
-async def _call_telegram(bot: Bot, chat_id: int, user_id: int, action: str, until: datetime | None) -> str | None:
+async def _call_telegram(
+    bot: Bot, chat_id: int, user_id: int, action: str, until: datetime | None, lang: str,
+) -> str | None:
     """Выполняет действие в Telegram. Возвращает текст ошибки или None при успехе."""
     try:
         if action == "ban":
@@ -69,13 +72,13 @@ async def _call_telegram(bot: Bot, chat_id: int, user_id: int, action: str, unti
         # action == "warn" не требует вызова Telegram API — только счётчик в БД
     except TelegramForbiddenError as exc:
         logger.warning("Sanction %s for user %s in chat %s forbidden: %s", action, user_id, chat_id, exc)
-        return "Бот не может выполнить действие: его исключили из чата или лишили прав."
+        return t(lang, "sanction_forbidden")
     except TelegramBadRequest as exc:
         logger.warning("Sanction %s for user %s in chat %s rejected: %s", action, user_id, chat_id, exc)
-        return _describe_bad_request(exc)
+        return _describe_bad_request(exc, lang)
     except TelegramAPIError as exc:
         logger.error("Sanction %s for user %s in chat %s failed: %s", action, user_id, chat_id, exc)
-        return "Не удалось выполнить действие из-за ошибки Telegram. Попробуйте ещё раз."
+        return t(lang, "sanction_failed")
     return None
 
 
@@ -87,13 +90,14 @@ async def apply_sanction(
     reason: str = "",
     actor_user_id: int = 0,
     duration_minutes: int | None = None,
+    lang: str = "ru",
 ) -> str | None:
     """Применяет санкцию. Возвращает текст ошибки для админа или None при успехе."""
     until = None
     if duration_minutes:
         until = datetime.now(timezone.utc) + timedelta(minutes=duration_minutes)
 
-    error = await _call_telegram(bot, chat_id, user_id, action, until)
+    error = await _call_telegram(bot, chat_id, user_id, action, until, lang)
     if error:
         return error
 

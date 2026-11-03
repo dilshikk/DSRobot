@@ -1,4 +1,10 @@
-"""Простейший i18n-загрузчик JSON-локалей. Langs and lang settings."""
+"""
+Простой i18n-загрузчик JSON-локалей (bot/locales/*.json).
+
+Язык чата хранится в Chat.lang (/setlang) и прокидывается ChatContextMiddleware в
+handler data как `lang` (issue #12). Хендлеры получают его аргументом `lang: str`
+и передают в t(). В личке используется язык Telegram-клиента пользователя.
+"""
 from __future__ import annotations
 
 import json
@@ -6,17 +12,24 @@ from functools import lru_cache
 from pathlib import Path
 
 LOCALES_DIR = Path(__file__).resolve().parent.parent / "locales"
+AVAILABLE_LANGS = ("ru", "en")
+FALLBACK_LANG = "en"
+
+
+def normalize_lang(raw: str | None, default: str = "ru") -> str:
+    """'en-US' -> 'en'. Неизвестный или пустой язык -> default."""
+    code = (raw or "").split("-")[0].split("_")[0].strip().lower()
+    return code if code in AVAILABLE_LANGS else default
 
 
 @lru_cache
-def _load(lang: str) -> dict:
+def _load(lang: str) -> dict[str, str]:
     path = LOCALES_DIR / f"{lang}.json"
     if not path.exists():
-        path = LOCALES_DIR / "en.json"
+        path = LOCALES_DIR / f"{FALLBACK_LANG}.json"
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def t(lang: str, key: str, **kwargs) -> str:
-    data = _load(lang)
-    text = data.get(key) or _load("en").get(key) or key
+def t(lang: str, key: str, **kwargs: object) -> str:
+    text = _load(lang).get(key) or _load(FALLBACK_LANG).get(key) or key
     return text.format(**kwargs) if kwargs else text

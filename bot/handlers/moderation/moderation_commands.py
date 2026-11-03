@@ -1,6 +1,7 @@
 """
 Основные команды модерации: /ban /mute /kick /unban /unmute.
 Цель — ответ на сообщение, @username или числовой id (см. services/moderation_targets.py).
+Ответы — на языке чата (issue #12): `lang` прокидывает ChatContextMiddleware.
 """
 from __future__ import annotations
 
@@ -24,38 +25,38 @@ def _parse_duration(raw: str | None) -> int | None:
 
 
 @router.message(Command("ban"), HasRole("admin"))
-async def cmd_ban(message: Message, command: CommandObject) -> None:
-    prepared = await prepare_target(message, command.args, "/ban [причина]")
+async def cmd_ban(message: Message, command: CommandObject, lang: str = "ru") -> None:
+    prepared = await prepare_target(message, command.args, t(lang, "usage_ban"), lang=lang)
     if prepared is None:
         return
     target, reason = prepared
-    if await run_sanction(message, target, "ban", reason):
-        await message.answer(t("ru", "user_banned", mention=target.mention), parse_mode="HTML")
+    if await run_sanction(message, target, "ban", reason, lang=lang):
+        await message.answer(t(lang, "user_banned", mention=target.mention), parse_mode="HTML")
 
 
 @router.message(Command("unban"), HasRole("admin"))
-async def cmd_unban(message: Message, command: CommandObject) -> None:
-    prepared = await prepare_target(message, command.args, "/unban", protect=False)
+async def cmd_unban(message: Message, command: CommandObject, lang: str = "ru") -> None:
+    prepared = await prepare_target(message, command.args, t(lang, "usage_unban"), protect=False, lang=lang)
     if prepared is None:
         return
     target, _ = prepared
-    if await run_sanction(message, target, "unban"):
-        await message.answer("\u2705 Разбанен(а).")
+    if await run_sanction(message, target, "unban", lang=lang):
+        await message.answer(t(lang, "user_unbanned"))
 
 
 @router.message(Command("kick"), HasRole("admin"))
-async def cmd_kick(message: Message, command: CommandObject) -> None:
-    prepared = await prepare_target(message, command.args, "/kick [причина]")
+async def cmd_kick(message: Message, command: CommandObject, lang: str = "ru") -> None:
+    prepared = await prepare_target(message, command.args, t(lang, "usage_kick"), lang=lang)
     if prepared is None:
         return
     target, reason = prepared
-    if await run_sanction(message, target, "kick", reason):
-        await message.answer("\U0001f465 Пользователь удалён из чата (может зайти повторно).")
+    if await run_sanction(message, target, "kick", reason, lang=lang):
+        await message.answer(t(lang, "user_kicked"))
 
 
 @router.message(Command("mute"), HasRole("admin"))
-async def cmd_mute(message: Message, command: CommandObject) -> None:
-    prepared = await prepare_target(message, command.args, "/mute [1h/1d/...] [причина]")
+async def cmd_mute(message: Message, command: CommandObject, lang: str = "ru") -> None:
+    prepared = await prepare_target(message, command.args, t(lang, "usage_mute"), lang=lang)
     if prepared is None:
         return
     target, reason = prepared
@@ -66,15 +67,15 @@ async def cmd_mute(message: Message, command: CommandObject) -> None:
         if parsed:
             duration = parsed
             reason = rest[0] if rest else ""
-    if await run_sanction(message, target, "mute", reason, duration):
-        await message.answer(t("ru", "user_muted", mention=target.mention), parse_mode="HTML")
+    if await run_sanction(message, target, "mute", reason, duration, lang=lang):
+        await message.answer(t(lang, "user_muted", mention=target.mention), parse_mode="HTML")
 
 
 @router.message(Command("unmute"), HasRole("admin"))
-async def cmd_unmute(message: Message, command: CommandObject) -> None:
-    prepared = await prepare_target(message, command.args, "/unmute", protect=False)
+async def cmd_unmute(message: Message, command: CommandObject, lang: str = "ru") -> None:
+    prepared = await prepare_target(message, command.args, t(lang, "usage_unmute"), protect=False, lang=lang)
     if prepared is None:
         return
     target, _ = prepared
-    if await run_sanction(message, target, "unmute"):
-        await message.answer("\U0001f50a Размучен(а).")
+    if await run_sanction(message, target, "unmute", lang=lang):
+        await message.answer(t(lang, "user_unmuted"))

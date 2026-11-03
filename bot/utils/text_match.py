@@ -8,6 +8,9 @@
 
 Одинаковое преобразование обеих сторон делает сравнение устойчивым к подменам,
 а поиск по границам слов убирает ложные срабатывания («ass» больше не находится в «class»).
+
+find_word (issue #51) — поиск ключевых слов magic-триггеров по границам слов с мягкой
+нормализацией (регистр, «ё», невидимые символы, лишние пробелы).
 """
 from __future__ import annotations
 
@@ -52,3 +55,37 @@ def find_banned(text: str, words: list[str] | tuple[str, ...], mode: str = MATCH
         return False
     pattern = _compile(tuple(sorted(words)), mode if mode in MATCH_MODES else MATCH_WORD)
     return bool(pattern and pattern.search(normalize(text)))
+
+
+def _light(text: str) -> str:
+    """Мягкая нормализация для ключевых слов (issue #51): без гомоглифов и схлопывания букв,
+    иначе magic-триггер «good» срабатывал бы на «god»."""
+    return " ".join(text.lower().translate(_INVISIBLE).replace("ё", "е").split())
+
+
+@lru_cache(maxsize=512)
+def _compile_words(words: tuple[str, ...]) -> tuple[re.Pattern[str] | None, dict[str, str]]:
+    variants: dict[str, str] = {}
+    for word in words:
+        key = _light(word)
+        if key:
+            variants.setdefault(key, word)
+    if not variants:
+        return None, {}
+    # Пробел в ключевой фразе совпадает с любым количеством пробелов в тексте.
+    alternation = "|".join(
+        re.escape(v).replace(r"\ ", r"\s+") for v in sorted(variants, key=len, reverse=True)
+    )
+    return re.compile(rf"(?<!\w)(?:{alternation})(?!\w)"), variants
+
+
+def find_word(text: str, words: list[str] | tuple[str, ...]) -> str | None:
+    """Первое слово/фраза из words, встреченное в text целиком. Возвращает исходное значение
+    из words или None. Используется magic-триггерами: «hi» не находится в «this»."""
+    if not text or not words:
+        return None
+    pattern, variants = _compile_words(tuple(sorted(words)))
+    if pattern is None:
+        return None
+    match = pattern.search(text.lower().translate(_INVISIBLE).replace("ё", "е"))
+    return variants.get(_light(match.group(0))) if match else None

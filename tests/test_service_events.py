@@ -1,5 +1,6 @@
 """Регрессионные тесты для issue #1: при вступлении в чат выполняются все шаги
-(блок ботов → капча → приветствие → статистика → удаление), а не только первый."""
+(блок ботов → капча → приветствие → статистика → удаление), а не только первый.
+issue #12: язык чата доходит до капчи, приветствия и прощания."""
 import asyncio
 from types import SimpleNamespace
 
@@ -20,12 +21,18 @@ def calls(monkeypatch):
         log.append(("blocks", [m.id for m in members]))
         return [m for m in members if m.id != 999]  # 999 — заблокированный бот
 
-    async def start_captcha(bot, chat_id, settings, humans):
+    async def start_captcha(bot, chat_id, settings, humans, lang="ru"):
         log.append(("captcha", [m.id for m in humans]))
+        log.append(("captcha_lang", lang))
         return [2]  # пользователь 2 получил капчу
 
-    async def greet_members(bot, chat_id, settings, members):
+    async def greet_members(bot, chat_id, settings, members, lang="ru"):
         log.append(("welcome", [m.id for m in members]))
+        log.append(("welcome_lang", lang))
+
+    async def farewell(bot, chat_id, settings, member, lang="ru"):
+        log.append(("goodbye", member.id))
+        log.append(("goodbye_lang", lang))
 
     async def bump_stat(chat_id, field):
         log.append(("stats", field))
@@ -37,11 +44,16 @@ def calls(monkeypatch):
         "kick_blocked_bots": kick_blocked_bots,
         "start_captcha": start_captcha,
         "greet_members": greet_members,
+        "farewell": farewell,
         "bump_stat": bump_stat,
         "delete_service_message": delete_service_message,
     }.items():
         monkeypatch.setattr(se, name, fn)
     return log
+
+
+def _steps(calls):
+    return [c[0] for c in calls if not c[0].endswith("_lang")]
 
 
 def _join_message(*members):
@@ -53,15 +65,32 @@ def test_join_runs_every_step_in_order(calls):
 
     asyncio.run(se.on_members_joined(msg, chat_settings={}))
 
-    assert [c[0] for c in calls] == ["blocks", "captcha", "welcome", "stats", "cleanup"]
+    assert _steps(calls) == ["blocks", "captcha", "welcome", "stats", "cleanup"]
     assert ("captcha", [1, 2]) in calls
     # пользователь на капче приветствуется позже, после её прохождения
     assert ("welcome", [1]) in calls
     assert ("stats", "joins_count") in calls
 
 
+def test_chat_language_reaches_captcha_and_welcome(calls):
+    msg = _join_message(_user(1), _user(2))
+
+    asyncio.run(se.on_members_joined(msg, chat_settings={}, lang="en"))
+
+    assert ("captcha_lang", "en") in calls
+    assert ("welcome_lang", "en") in calls
+
+
+def test_chat_language_reaches_goodbye(calls):
+    msg = SimpleNamespace(bot=object(), chat=SimpleNamespace(id=-100), left_chat_member=_user(5))
+
+    asyncio.run(se.on_member_left(msg, chat_settings={}, lang="en"))
+
+    assert ("goodbye_lang", "en") in calls
+
+
 def test_failing_step_does_not_cancel_the_rest(calls, monkeypatch):
-    async def broken_captcha(*args):
+    async def broken_captcha(*args, **kwargs):
         calls.append(("captcha",))
         raise RuntimeError("no rights")
 
@@ -70,7 +99,7 @@ def test_failing_step_does_not_cancel_the_rest(calls, monkeypatch):
 
     asyncio.run(se.on_members_joined(msg, chat_settings={}))
 
-    assert [c[0] for c in calls] == ["blocks", "captcha", "welcome", "stats", "cleanup"]
+    assert _steps(calls) == ["blocks", "captcha", "welcome", "stats", "cleanup"]
     assert ("welcome", [1]) in calls
 
 

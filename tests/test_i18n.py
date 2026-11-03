@@ -4,7 +4,11 @@ import string
 
 import pytest
 
+from bot.database.models import ChatSettings
+from bot.handlers.welcome.goodbye import goodbye_text
+from bot.handlers.welcome.welcome import welcome_text
 from bot.utils.i18n import AVAILABLE_LANGS, LOCALES_DIR, normalize_lang, t
+from bot.utils.telegram import rights_notice_text
 
 
 def _locale(lang: str) -> dict[str, str]:
@@ -42,3 +46,36 @@ def test_formatting_and_fallbacks():
 ])
 def test_normalize_lang(raw, expected):
     assert normalize_lang(raw) == expected
+
+
+# --- часть 2: приветствие, прощание, капча, уведомления о правах ---
+
+def test_default_welcome_and_goodbye_follow_chat_language():
+    # В DEFAULTS не должно быть зашитого русского текста, иначе он перебьёт локаль.
+    defaults = ChatSettings.DEFAULTS
+    assert welcome_text(defaults["welcome"], "en", "@bob") == "Welcome, @bob!"
+    assert goodbye_text(defaults["goodbye"], "en", "@bob") == "@bob left the chat."
+    assert welcome_text(defaults["welcome"], "ru", "@bob") == "Добро пожаловать, @bob!"
+
+
+def test_custom_welcome_text_is_kept_as_is():
+    cfg = {"text": "Hola, {mention}!"}
+    assert welcome_text(cfg, "en", "@bob") == "Hola, @bob!"
+    assert goodbye_text(cfg, "ru", "@bob") == "Hola, @bob!"
+
+
+def test_usage_hints_show_literal_mention_placeholder():
+    # {{mention}} в локали должен превратиться в {mention}, а не сломать format().
+    assert "{mention}" in t("en", "welcome_usage")
+    assert "{mention}" in t("ru", "goodbye_usage")
+
+
+def test_captcha_prompt_is_translated():
+    text = t("en", "captcha_prompt", mention="@bob", question="2 + 3 = ?", timeout=120)
+    assert "@bob" in text and "2 + 3 = ?" in text and "120" in text
+    assert "нажмите" not in text
+
+
+def test_rights_notice_is_translated():
+    assert "delete messages" in rights_notice_text("en", "rights_action_delete")
+    assert "удалять сообщения" in rights_notice_text("ru", "rights_action_delete")

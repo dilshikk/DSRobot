@@ -100,3 +100,9 @@ def message_text(message: Message) -> str:
 
 def message_entities(message: Message) -> list[MessageEntity]:
     return list(message.entities or message.caption_entities or [])
+
+
+def entity_text(message: Message, entity: MessageEntity) -> str:
+    """Текст под entity. offset/length у Telegram — в UTF-16 code units."""
+    raw = message_text(message).encode("utf-16-le")
+    return raw[entity.offset * 2: (entity.offset + entity.length) * 2].decode("utf-16-le", "ignore")

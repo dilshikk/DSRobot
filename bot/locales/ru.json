@@ -59,10 +59,16 @@
   "wordmode_set": "✅ Поиск запрещённых слов: {label}.",
   "banned_word_reason": "Запрещённое слово",
 
-  "link_action_usage": "Использование: /linkaction delete | warn | mute | ban | off",
+  "link_action_usage": "Использование: /linkaction delete | warn | ban | off | mute [минуты, по умолчанию 60]",
   "link_action_set": "✅ Действие на ссылки: {action}",
   "allowlink_usage": "Использование: /allowlink ДОМЕН",
   "allowlink_added": "✅ Домен «{domain}» добавлен в белый список.",
+  "denylink_usage": "Использование: /denylink ДОМЕН",
+  "denylink_removed": "✅ Домен «{domain}» удалён из белого списка.",
+  "denylink_missing": "Домена «{domain}» нет в белом списке.",
+  "linkadmins_usage": "Использование: /linkadmins on|off",
+  "linkadmins_on": "✅ Админам можно публиковать ссылки.",
+  "linkadmins_off": "✅ Ссылки админов проверяются наравне со всеми.",
   "link_reason": "Запрещённая ссылка",
 
   "maxlen_usage": "Использование: /setmaxlen СИМВОЛОВ (0 = выключить)",

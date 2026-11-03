@@ -22,6 +22,35 @@ async def init_models() -> None:
         await conn.run_sync(Base.metadata.create_all)
         await _migrate_bot_clones(conn)
         await _migrate_recurring_messages(conn)
+        await _migrate_members_and_stats(conn)
+
+
+# Новые колонки chat_users: активность и выход по чату (issue #47), ожидание одобрения (issue #50).
+CHAT_USERS_DDL = (
+    "ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ",
+    "ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS left_at TIMESTAMPTZ",
+    "ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS pending_approval BOOLEAN NOT NULL DEFAULT FALSE",
+    "CREATE INDEX IF NOT EXISTS ix_chat_users_user_id ON chat_users (user_id)",
+)
+
+
+async def _migrate_members_and_stats(conn: AsyncConnection) -> None:
+    """
+    Временная идемпотентная миграция (issue #47), пока нет Alembic.
+    group_stats.date была timestamptz и сравнивалась с date — переводим в DATE.
+    """
+    for ddl in CHAT_USERS_DDL:
+        await conn.execute(text(ddl))
+
+    data_type = (await conn.execute(text(
+        "SELECT data_type FROM information_schema.columns "
+        "WHERE table_name = 'group_stats' AND column_name = 'date'"
+    ))).scalar()
+    if data_type and data_type != "date":
+        await conn.execute(text(
+            "ALTER TABLE group_stats ALTER COLUMN date TYPE DATE USING (date AT TIME ZONE 'UTC')::date"
+        ))
+        logger.info("group_stats.date: %s -> date", data_type)
 
 
 async def _migrate_recurring_messages(conn: AsyncConnection) -> None:

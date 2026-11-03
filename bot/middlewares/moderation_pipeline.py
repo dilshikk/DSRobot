@@ -14,6 +14,9 @@ Moderation pipeline middleware (issue #1).
 
 issue #7: цепочка подключена и к edited_message, иначе любой фильтр обходился правкой
 сообщения. Для правок не считаются статистика и дубликаты (antispam).
+
+issue #34: команды тоже проходят проверки. Раньше любой текст, начинающийся с "/",
+сразу уходил в хендлеры, и "/ купить https://spam.ru" обходил все фильтры.
 """
 from __future__ import annotations
 
@@ -52,9 +55,18 @@ MESSAGE_CHECKS: list[Check] = [
 # Проверки, которые не имеют смысла для отредактированного сообщения.
 SKIP_ON_EDIT: set[Check] = {antispam.check_duplicate_spam}
 
+# Проверки, которые не применяются к командам: в чате с ограничением алфавита
+# латинская команда (/price btc) удалялась бы всегда.
+SKIP_ON_COMMAND: set[Check] = {alphabets.check_alphabet}
+
 
 def _is_service(message: Message) -> bool:
     return bool(message.new_chat_members or message.left_chat_member or message.pinned_message)
+
+
+def _is_command(message: Message) -> bool:
+    """Команда = entity bot_command в начале сообщения, а не просто текст с "/"."""
+    return any(e.type == "bot_command" and e.offset == 0 for e in (message.entities or []))
 
 
 class ModerationPipelineMiddleware(BaseMiddleware):
@@ -73,15 +85,11 @@ class ModerationPipelineMiddleware(BaseMiddleware):
             return await handler(event, data)
 
         is_edit = event.edit_date is not None
-
-        if (event.text or "").startswith("/"):
-            if not is_edit:
-                message_deletion.schedule_command_autodelete(event, settings)
-            return await handler(event, data)
+        is_command = _is_command(event)
 
         role = data.get("chat_user_role", "member")
         for check in MESSAGE_CHECKS:
-            if is_edit and check in SKIP_ON_EDIT:
+            if (is_edit and check in SKIP_ON_EDIT) or (is_command and check in SKIP_ON_COMMAND):
                 continue
             try:
                 if await check(event, settings, role):
@@ -89,6 +97,11 @@ class ModerationPipelineMiddleware(BaseMiddleware):
             except Exception:
                 # Ошибка одной проверки не должна ломать остальные.
                 logger.exception("Moderation check %s failed", check.__name__)
+
+        if is_command:
+            if not is_edit:
+                message_deletion.schedule_command_autodelete(event, settings)
+            return await handler(event, data)
 
         if event.text and not is_edit:
             try:

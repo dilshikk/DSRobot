@@ -4,18 +4,23 @@ import asyncio
 from datetime import datetime
 
 import pytest
-from aiogram.types import Chat, Message, User
+from aiogram.types import Chat, Message, MessageEntity, User
 
 from bot.middlewares import moderation_pipeline as mp
 
 
-def _msg(text: str | None = "hello", *, edited: bool = False, chat_type: str = "supergroup") -> Message:
+def _msg(text: str | None = "hello", *, edited: bool = False, chat_type: str = "supergroup",
+         command: bool = False) -> Message:
+    entities = None
+    if command:
+        entities = [MessageEntity(type="bot_command", offset=0, length=len(text.split()[0]))]
     return Message.model_construct(
         message_id=1,
         date=datetime.now(),
         chat=Chat.model_construct(id=-100, type=chat_type),
         from_user=User.model_construct(id=42, is_bot=False, first_name="Test"),
         text=text,
+        entities=entities,
         edit_date=int(datetime.now().timestamp()) if edited else None,
     )
 
@@ -98,16 +103,55 @@ def test_failing_check_does_not_break_others(env, monkeypatch):
     assert len(handled) == 1
 
 
-def test_commands_skip_checks_and_reach_handlers(env, monkeypatch):
+def test_commands_pass_checks_and_reach_handlers(env, monkeypatch):
     rec, stats, autodelete = env
-    monkeypatch.setattr(mp, "MESSAGE_CHECKS", [rec.check("a", result=True)])
+    monkeypatch.setattr(mp, "MESSAGE_CHECKS", [rec.check("a"), rec.check("b")])
 
-    _, handled = _run(_msg("/stats"))
+    _, handled = _run(_msg("/stats", command=True))
 
-    assert rec.calls == []
+    assert rec.calls == ["a", "b"]
     assert len(handled) == 1
     assert autodelete == [1]
     assert stats == []
+
+
+def test_command_with_spam_is_deleted(env, monkeypatch):
+    """issue #34: аргументы команды тоже проверяются."""
+    rec, stats, autodelete = env
+    monkeypatch.setattr(mp, "MESSAGE_CHECKS", [rec.check("links", result=True)])
+
+    result, handled = _run(_msg("/rules https://spam.ru", command=True))
+
+    assert result is None and handled == []
+    assert autodelete == []
+
+
+def test_slash_text_without_command_entity_is_moderated(env, monkeypatch):
+    """issue #34: "/ купить ..." не команда и не должна обходить фильтры."""
+    rec, stats, autodelete = env
+    monkeypatch.setattr(mp, "MESSAGE_CHECKS", [rec.check("links", result=True)])
+
+    result, handled = _run(_msg("/ купить тут https://spam.ru"))
+
+    assert rec.calls == ["links"]
+    assert result is None and handled == []
+    assert autodelete == []
+
+
+def test_commands_skip_alphabet_check(env, monkeypatch):
+    rec, _, _ = env
+    alphabet = rec.check("alphabet", result=True)
+    monkeypatch.setattr(mp, "MESSAGE_CHECKS", [rec.check("a"), alphabet])
+    monkeypatch.setattr(mp, "SKIP_ON_COMMAND", {alphabet})
+
+    _, handled = _run(_msg("/price btc", command=True))
+
+    assert rec.calls == ["a"]
+    assert len(handled) == 1
+
+
+def test_real_alphabet_check_is_skipped_for_commands():
+    assert mp.alphabets.check_alphabet in mp.SKIP_ON_COMMAND
 
 
 def test_edited_message_skips_antispam_and_stats(env, monkeypatch):
@@ -138,3 +182,17 @@ def test_real_pipeline_contains_all_background_checks():
         assert expected in names
     # antispam должен идти последним, иначе он снова «съест» сообщение раньше фильтров
     assert names[-1] == "check_duplicate_spam"
+
+
+def test_throttling_runs_after_moderation():
+    """issue #34: throttling не должен отбрасывать сообщение до проверок модерации."""
+    from aiogram import Dispatcher
+
+    from bot.main import setup_middlewares
+    from bot.middlewares.throttling import ThrottlingMiddleware
+
+    dp = Dispatcher()
+    setup_middlewares(dp)
+
+    assert not any(isinstance(m, ThrottlingMiddleware) for m in dp.message.outer_middleware)
+    assert any(isinstance(m, ThrottlingMiddleware) for m in dp.message.middleware)

@@ -48,7 +48,7 @@ def setup_sentry() -> None:
 def setup_middlewares(dp: Dispatcher) -> None:
     """
     Middleware Layer. Порядок важен: сначала контекст чата (роль, настройки), затем
-    throttling команд, anti-flood и единая цепочка авто-модерации (issue #1).
+    anti-flood и единая цепочка авто-модерации (issue #1).
 
     Используются OUTER-middleware: inner-middleware в aiogram 3 вызываются только ПОСЛЕ
     того, как фильтры хендлера прошли. Из-за этого фильтр HasRole не видел
@@ -56,9 +56,11 @@ def setup_middlewares(dp: Dispatcher) -> None:
     проходили модерацию (issue #7).
     """
     dp.message.outer_middleware(ChatContextMiddleware())
-    dp.message.outer_middleware(ThrottlingMiddleware())
     dp.message.outer_middleware(AntiFloodMiddleware())
     dp.message.outer_middleware(ModerationPipelineMiddleware())
+    # Throttling — inner: ограничивает только вызов хендлера команды. Как outer он
+    # отбрасывал быструю вторую "команду" до модерации, и она оставалась в чате (issue #34).
+    dp.message.middleware(ThrottlingMiddleware())
 
     # Правка сообщения не должна обходить фильтры (issue #7). Anti-flood и throttling
     # для правок не нужны: правка не создаёт новое сообщение.

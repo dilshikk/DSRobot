@@ -1,4 +1,8 @@
-version: "3.9"
+# Продакшн-конфигурация.
+# PostgreSQL и Redis НЕ публикуют порты наружу: бот обращается к ним по внутренней
+# docker-сети по именам сервисов (postgres / redis). См. issue #5.
+# Для локальной разработки (монтирование исходников, доступ к БД с хоста):
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 
 services:
   bot:
@@ -9,35 +13,38 @@ services:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_started
-    volumes:
-      - ./bot:/app/bot
+        condition: service_healthy
 
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
-    env_file: .env
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 10
-    ports:
-      - "5432:5432"
 
   redis:
     image: redis:7-alpine
     restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+    # Пароль передаётся через переменную окружения, а не в открытом виде в command,
+    # чтобы он не светился в `docker inspect` у образа.
+    command: ["sh", "-c", "exec redis-server --requirepass \"$$REDIS_PASSWORD\" --appendonly yes"]
     volumes:
       - redis-data:/data
-    ports:
-      - "6379:6379"
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping | grep -q PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
 volumes:
   postgres-data:

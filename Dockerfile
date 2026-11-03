@@ -11,6 +11,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends gcc libpq-dev c
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+# Бот не должен работать от root (issue #5).
+RUN groupadd --system app && useradd --system --gid app --home-dir /app --no-create-home app
+
+COPY --chown=app:app . .
+
+USER app
 
 CMD ["python", "-m", "bot.main"]

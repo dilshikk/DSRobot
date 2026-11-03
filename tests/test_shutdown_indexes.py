@@ -1,10 +1,14 @@
 """issue #13: индексы под частые запросы и корректное закрытие соединений."""
 import asyncio
+import importlib
 import inspect
 
 from bot import main as bot_main
-from bot.database import engine as db_engine
 from bot.services import cache
+
+# Не `from bot.database import engine`: пакет экспортирует объект AsyncEngine с тем же
+# именем, и импорт вернул бы его, а не модуль.
+db_engine = importlib.import_module("bot.database.engine")
 
 
 class _Recorder:

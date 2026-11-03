@@ -1,6 +1,7 @@
 """issue #47: статистика без гонок и по дате чата, sanctions_count считается,
 /inactive и /tagall смотрят на активность в этом чате и не включают вышедших."""
 import asyncio
+import re
 from datetime import date, datetime, timezone
 from types import SimpleNamespace
 
@@ -27,9 +28,11 @@ def test_chat_today_uses_chat_offset(offset, expected):
 
 
 def test_stat_upsert_is_atomic_increment():
+    # SQLAlchemy не подставляет literal_binds в ON CONFLICT ... SET, поэтому параметры
+    # остаются плейсхолдерами. Проверяем саму форму: x = coalesce(x, ?) + ?
     sql = _sql(stats.stat_upsert(-100, "messages_count", date(2026, 1, 1)))
     assert "ON CONFLICT ON CONSTRAINT uq_chat_date DO UPDATE" in sql
-    assert "coalesce(group_stats.messages_count, 0) + 1" in sql
+    assert re.search(r"SET messages_count = \(?coalesce\(group_stats\.messages_count, [^)]+\) \+ ", sql)
 
 
 def test_stat_upsert_rejects_unknown_field():
@@ -41,7 +44,8 @@ def test_inactive_query_is_per_chat_and_skips_left_members():
     sql = _sql(members_management.inactive_members_query(-100, datetime(2026, 1, 1, tzinfo=timezone.utc)))
     assert "coalesce(chat_users.last_seen_at, chat_users.joined_at)" in sql
     assert "chat_users.left_at IS NULL" in sql
-    assert "users.last_seen" not in sql
+    # Глобальный users.last_seen не используется (подстрока chat_users.last_seen_at не в счёт).
+    assert not re.search(r"(?<![\w.])users\.last_seen\b", sql)
 
 
 class RecordingSession:

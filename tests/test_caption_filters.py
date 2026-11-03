@@ -77,8 +77,7 @@ def test_new_media_blocks(deleted, kind, fields):
 
 
 class FakeSession:
-    def __init__(self, approved=False):
-        self.approved = approved
+    """Возвращает участника, который вступил при включённом approve mode и ждёт одобрения (issue #50)."""
 
     async def __aenter__(self):
         return self
@@ -87,7 +86,8 @@ class FakeSession:
         return False
 
     async def execute(self, stmt):
-        return SimpleNamespace(scalar_one_or_none=lambda: None)
+        pending = SimpleNamespace(pending_approval=True, approved=False)
+        return SimpleNamespace(scalar_one_or_none=lambda: pending)
 
 
 def test_night_mode_deletes_voice(deleted, monkeypatch):
@@ -97,8 +97,16 @@ def test_night_mode_deletes_voice(deleted, monkeypatch):
 
 
 def test_approve_mode_deletes_voice_from_unapproved(deleted, monkeypatch):
+    notified = []
+
+    async def fake_notify(message):
+        notified.append(message.message_id)
+
     monkeypatch.setattr(approve_mode, "SessionFactory", FakeSession)
+    # У сообщения из model_construct нет бота, поэтому уведомление подменяем.
+    monkeypatch.setattr(approve_mode, "_notify_pending", fake_notify)
     assert _check(approve_mode.check_unapproved, _msg(voice=VOICE), {"approve_mode": {"enabled": True}})
+    assert deleted == [1] and notified == [1]
 
 
 @pytest.mark.parametrize("fields, service", [

@@ -23,6 +23,28 @@ async def init_models() -> None:
         await _migrate_bot_clones(conn)
         await _migrate_recurring_messages(conn)
         await _migrate_members_and_stats(conn)
+        await _create_indexes(conn)
+
+
+async def close_db() -> None:
+    """Закрывает пул соединений PostgreSQL при остановке бота (issue #13)."""
+    await engine.dispose()
+
+
+# Индексы под частые запросы (issue #13). create_all не добавляет индексы
+# в уже существующие таблицы, поэтому создаём их идемпотентно.
+INDEXES_DDL = (
+    # /stats, лог-канал, проверка «был ли пользователь под санкциями» (privacy_service).
+    "CREATE INDEX IF NOT EXISTS ix_audit_log_chat_id_created_at ON audit_log (chat_id, created_at)",
+    "CREATE INDEX IF NOT EXISTS ix_audit_log_target_user_id ON audit_log (target_user_id)",
+    # Загрузка списка запрещённых слов чата.
+    "CREATE INDEX IF NOT EXISTS ix_banned_words_chat_id ON banned_words (chat_id)",
+)
+
+
+async def _create_indexes(conn: AsyncConnection) -> None:
+    for ddl in INDEXES_DDL:
+        await conn.execute(text(ddl))
 
 
 # Новые колонки chat_users: активность и выход по чату (issue #47), ожидание одобрения (issue #50).

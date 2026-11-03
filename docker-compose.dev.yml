@@ -1,0 +1,18 @@
+# Только для локальной разработки. НЕ используйте на публичном сервере.
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+#
+# - монтирует исходники в контейнер (правки без пересборки образа);
+# - открывает PostgreSQL и Redis только на 127.0.0.1 (не во внешнюю сеть).
+
+services:
+  bot:
+    volumes:
+      - ./bot:/app/bot
+
+  postgres:
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  redis:
+    ports:
+      - "127.0.0.1:6379:6379"

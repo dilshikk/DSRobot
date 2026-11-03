@@ -82,7 +82,7 @@ class ChatSettings(Base):
         "link_settings": {"action": "delete", "allow_admins": True, "whitelist": []},
         "approve_mode": {"enabled": False},
         "message_deletion": {"delete_service_messages": True, "delete_commands_after_sec": 0},
-        "warns": {"max_warns": 3, "action": "ban"},
+        "warns": {"max_warns": 3, "action": "ban", "mute_minutes": 60},
         "banned_words": {"action": "delete"},
         "tag_admin": {"cooldown_sec": 300},
         "tag_all": {"enabled": False},

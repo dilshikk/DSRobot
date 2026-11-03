@@ -8,6 +8,8 @@ welcome, captcha, group_statistics), но aiogram вызывает только 
 вступление: блок ботов → капча → приветствие → статистика → удаление служебного сообщения
 выход:      прощание → статистика → удаление служебного сообщения
 закреп:     удаление служебного сообщения
+
+issue #12: капча, приветствие и прощание пишутся на языке чата (`lang`).
 """
 from __future__ import annotations
 
@@ -38,7 +40,7 @@ async def _safe(step: Awaitable[object], name: str) -> object | None:
 
 
 @router.message(F.new_chat_members)
-async def on_members_joined(message: Message, chat_settings: dict | None = None) -> None:
+async def on_members_joined(message: Message, chat_settings: dict | None = None, lang: str = "ru") -> None:
     settings = chat_settings or {}
     bot, chat_id = message.bot, message.chat.id
 
@@ -47,19 +49,19 @@ async def on_members_joined(message: Message, chat_settings: dict | None = None)
         remaining = message.new_chat_members
     humans = [m for m in remaining if not m.is_bot]
 
-    in_captcha = await _safe(start_captcha(bot, chat_id, settings, humans), "captcha") or []
+    in_captcha = await _safe(start_captcha(bot, chat_id, settings, humans, lang=lang), "captcha") or []
     # Участников на капче поприветствуем после её прохождения (см. captcha.py).
     to_greet = [m for m in humans if m.id not in set(in_captcha)]
-    await _safe(greet_members(bot, chat_id, settings, to_greet), "welcome")
+    await _safe(greet_members(bot, chat_id, settings, to_greet, lang=lang), "welcome")
 
     await _safe(bump_stat(chat_id, "joins_count"), "stats")
     await _safe(delete_service_message(message, settings), "cleanup")
 
 
 @router.message(F.left_chat_member)
-async def on_member_left(message: Message, chat_settings: dict | None = None) -> None:
+async def on_member_left(message: Message, chat_settings: dict | None = None, lang: str = "ru") -> None:
     settings = chat_settings or {}
-    await _safe(farewell(message.bot, message.chat.id, settings, message.left_chat_member), "goodbye")
+    await _safe(farewell(message.bot, message.chat.id, settings, message.left_chat_member, lang=lang), "goodbye")
     await _safe(bump_stat(message.chat.id, "leaves_count"), "stats")
     await _safe(delete_service_message(message, settings), "cleanup")
 

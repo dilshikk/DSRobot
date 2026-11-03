@@ -67,9 +67,10 @@ class ChatSettings(Base):
     chat: Mapped["Chat"] = relationship(back_populates="settings")
 
     # Значения по умолчанию, применяются при первом создании записи (см. services/settings.py)
+    # Пустой text у welcome/goodbye = стандартный текст на языке чата (issue #12).
     DEFAULTS = {
-        "welcome": {"enabled": True, "text": "Добро пожаловать, {mention}!", "clean_old": True},
-        "goodbye": {"enabled": False, "text": "{mention} покинул(а) чат."},
+        "welcome": {"enabled": True, "text": "", "clean_old": True},
+        "goodbye": {"enabled": False, "text": ""},
         "rules": {"text": ""},
         "captcha": {"mode": "math", "timeout_sec": 120, "kick_on_fail": True},
         "antiflood": {"enabled": True, "max_messages": 7, "per_seconds": 8, "action": "mute"},

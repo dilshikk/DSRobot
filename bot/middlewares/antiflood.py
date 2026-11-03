@@ -8,6 +8,8 @@ issue #7:
   ставится атомарно (SET NX), поэтому нет повторных вызовов Telegram API,
   дублей в AuditLog и спама в лог-канал;
 - каждое сообщение сверх лимита удаляется (а не просто «застревает» в чате).
+
+issue #12: причина санкции пишется на языке чата.
 """
 from __future__ import annotations
 
@@ -20,6 +22,7 @@ from aiogram.types import Message, TelegramObject
 
 from bot.services.cache import incr_with_ttl, redis
 from bot.services.moderation_actions import apply_sanction
+from bot.utils.i18n import t
 from bot.utils.permissions import is_privileged
 
 logger = logging.getLogger(__name__)
@@ -81,11 +84,12 @@ class AntiFloodMiddleware(BaseMiddleware):
             if action not in FLOOD_ACTIONS:
                 action = "mute"
             duration = _int_setting(cfg, "mute_minutes", DEFAULT_MUTE_MINUTES) if action == "mute" else None
+            lang = data.get("lang", "ru")
             try:
                 await apply_sanction(
                     bot=data["bot"], chat_id=chat_id, user_id=user_id, action=action,
-                    reason="Anti-flood: превышен лимит сообщений", actor_user_id=0,
-                    duration_minutes=duration,
+                    reason=t(lang, "flood_reason"), actor_user_id=0,
+                    duration_minutes=duration, lang=lang,
                 )
             except Exception:
                 logger.exception("Anti-flood sanction failed for user %s in chat %s", user_id, chat_id)

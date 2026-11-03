@@ -4,7 +4,7 @@
 Раньше по проекту было `except Exception: pass`: ошибки прав бота, сети и логики
 пропадали бесследно. Здесь ошибки перехватываются по типу и пишутся в лог (а через
 лог — в Sentry). Если боту не хватает прав, в чат один раз в несколько часов
-приходит понятное сообщение для админов.
+приходит понятное сообщение для админов — на языке чата (issue #12).
 """
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ from aiogram.exceptions import TelegramAPIError, TelegramBadRequest, TelegramFor
 from aiogram.types import Message
 
 from bot.services.cache import redis
+from bot.utils.i18n import t
 
 logger = logging.getLogger(__name__)
 
@@ -35,17 +36,25 @@ def _is_already_gone(exc: TelegramBadRequest) -> bool:
     return any(marker in text for marker in ALREADY_GONE_MARKERS)
 
 
-async def notify_missing_rights(bot: Bot, chat_id: int, action: str) -> None:
+def rights_notice_text(lang: str, action: str) -> str:
+    """
+    action — ключ локали (например "rights_action_delete"). Для совместимости
+    принимается и готовая фраза: t() вернёт неизвестный ключ как есть.
+    """
+    return t(lang, "rights_missing", action=t(lang, action))
+
+
+async def notify_missing_rights(bot: Bot, chat_id: int, action: str, lang: str | None = None) -> None:
     """Сообщает в чат, что боту не хватает прав. Не чаще раза в RIGHTS_NOTICE_TTL."""
     is_first = await redis.set(f"rights_notice:{chat_id}", 1, ex=RIGHTS_NOTICE_TTL, nx=True)
     if not is_first:
         return
+    if lang is None:
+        # Ленивый импорт: chat_lang тянет базу данных, а этот модуль — низкоуровневый.
+        from bot.services.chat_lang import get_chat_lang
+        lang = await get_chat_lang(chat_id)
     try:
-        await bot.send_message(
-            chat_id,
-            f"\u26a0\ufe0f У бота не хватает прав, чтобы {action}. "
-            "Выдайте боту права администратора на удаление сообщений и блокировку участников.",
-        )
+        await bot.send_message(chat_id, rights_notice_text(lang, action))
     except TelegramAPIError as exc:
         logger.warning("Cannot send missing-rights notice to chat %s: %s", chat_id, exc)
 
@@ -57,7 +66,7 @@ async def _handle_delete_error(bot: Bot, chat_id: int, message_id: int, exc: Tel
             return
         logger.warning("Cannot delete message %s in chat %s: %s", message_id, chat_id, exc)
         if notify and is_rights_error(exc):
-            await notify_missing_rights(bot, chat_id, "удалять сообщения")
+            await notify_missing_rights(bot, chat_id, "rights_action_delete")
     elif isinstance(exc, TelegramForbiddenError):
         logger.warning("Bot was removed from chat %s, cannot delete message %s: %s", chat_id, message_id, exc)
     else:

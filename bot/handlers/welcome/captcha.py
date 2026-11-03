@@ -13,6 +13,9 @@ Captcha (1 mode: math) на inline-кнопках.
 Таймаут (issue #10): задача хранится в Redis и переживает перезапуск, а в аргументах
 хранит bot_id — кикает тот бот (основной или клон), который выдал капчу.
 
+Все тексты — на языке чата (issue #12). Для кнопок язык прокидывает
+CallbackContextMiddleware, для таймаута он читается из кэша (services/chat_lang.py).
+
 Запуск капчи вызывается из welcome/service_events.py (issue #1).
 """
 from __future__ import annotations
@@ -38,9 +41,11 @@ from bot.filters.roles import HasRole
 from bot.handlers.welcome.welcome import greet_members
 from bot.services.bot_registry import get_bot
 from bot.services.cache import get_json, redis, set_json
+from bot.services.chat_lang import get_chat_lang
 from bot.services.moderation_actions import apply_sanction
 from bot.services.scheduler import remove_job, schedule_once
 from bot.services.settings_service import get_settings, update_settings
+from bot.utils.i18n import t
 from bot.utils.telegram import delete_by_id_safely, is_rights_error, notify_missing_rights
 
 router = Router(name="captcha")
@@ -100,14 +105,16 @@ async def _cleanup(bot: Bot, chat_id: int, user_id: int) -> None:
 
 
 @router.message(Command("captcha"), HasRole("admin"))
-async def toggle_captcha(message: Message, chat_settings: dict) -> None:
-    new_state = chat_settings.get("captcha", {}).get("mode") != "off"
+async def toggle_captcha(message: Message, chat_settings: dict, lang: str = "ru") -> None:
+    was_enabled = chat_settings.get("captcha", {}).get("mode") != "off"
     async with SessionFactory() as session:
-        await update_settings(session, message.chat.id, "captcha", {"mode": "off" if new_state else "math"})
-    await message.answer(f"Captcha: {'выключена' if new_state else 'включена (math)'}")
+        await update_settings(session, message.chat.id, "captcha", {"mode": "off" if was_enabled else "math"})
+    await message.answer(t(lang, "captcha_disabled" if was_enabled else "captcha_enabled"))
 
 
-async def start_captcha(bot: Bot, chat_id: int, chat_settings: dict, members: list[User]) -> list[int]:
+async def start_captcha(
+    bot: Bot, chat_id: int, chat_settings: dict, members: list[User], lang: str = "ru",
+) -> list[int]:
     """Запускает капчу для участников. Возвращает id тех, кому капча реально выдана."""
     cfg = chat_settings.get("captcha", {})
     if cfg.get("mode", "math") == "off":
@@ -124,7 +131,7 @@ async def start_captcha(bot: Bot, chat_id: int, chat_settings: dict, members: li
             # Без прав ограничения капча бессмысленна: участник и так может писать.
             logger.warning("Captcha skipped for %s in chat %s: %s", member.id, chat_id, exc)
             if is_rights_error(exc):
-                await notify_missing_rights(bot, chat_id, "включать капчу для новых участников")
+                await notify_missing_rights(bot, chat_id, "rights_action_captcha", lang=lang)
             continue
         except TelegramAPIError as exc:
             logger.warning("Captcha skipped for %s in chat %s: %s", member.id, chat_id, exc)
@@ -137,8 +144,7 @@ async def start_captcha(bot: Bot, chat_id: int, chat_settings: dict, members: li
 
         sent = await bot.send_message(
             chat_id,
-            f"\U0001f510 {member.mention_html()}, нажмите правильный ответ, чтобы получить доступ: "
-            f"<b>{a} + {b} = ?</b>\nНа ответ {timeout} сек.",
+            t(lang, "captcha_prompt", mention=member.mention_html(), question=f"{a} + {b} = ?", timeout=timeout),
             parse_mode="HTML",
             reply_markup=_keyboard(member.id, _build_options(answer)),
         )
@@ -158,7 +164,7 @@ async def start_captcha(bot: Bot, chat_id: int, chat_settings: dict, members: li
 
 
 @router.callback_query(F.data.startswith(f"{CALLBACK_PREFIX}:"))
-async def check_captcha_answer(callback: CallbackQuery) -> None:
+async def check_captcha_answer(callback: CallbackQuery, lang: str = "ru") -> None:
     if callback.message is None or callback.data is None:
         return await callback.answer()
 
@@ -170,13 +176,13 @@ async def check_captcha_answer(callback: CallbackQuery) -> None:
 
     # Кнопки капчи может нажимать только тот, для кого она создана.
     if callback.from_user.id != target_id:
-        return await callback.answer("Эта проверка не для вас.", show_alert=True)
+        return await callback.answer(t(lang, "captcha_not_for_you"), show_alert=True)
 
     chat_id = callback.message.chat.id
     key = _state_key(chat_id, target_id)
     state = await get_json(key)
     if state is None:
-        return await callback.answer("Проверка уже неактуальна.", show_alert=True)
+        return await callback.answer(t(lang, "captcha_expired"), show_alert=True)
 
     bot = callback.bot
     if value == state["answer"]:
@@ -184,14 +190,14 @@ async def check_captcha_answer(callback: CallbackQuery) -> None:
             await bot.restrict_chat_member(chat_id, target_id, UNRESTRICTED)
         except TelegramAPIError as exc:
             logger.warning("Cannot lift captcha restriction for %s in chat %s: %s", target_id, chat_id, exc)
-            return await callback.answer("Не удалось снять ограничения, обратитесь к админу.", show_alert=True)
+            return await callback.answer(t(lang, "captcha_unrestrict_failed"), show_alert=True)
         await _cleanup(bot, chat_id, target_id)
-        await callback.answer("Проверка пройдена, добро пожаловать!")
+        await callback.answer(t(lang, "captcha_passed"))
         # Приветствие откладывалось до прохождения капчи (см. service_events.py).
         async with SessionFactory() as session:
             chat_settings = await get_settings(session, chat_id)
         try:
-            await greet_members(bot, chat_id, chat_settings, [callback.from_user])
+            await greet_members(bot, chat_id, chat_settings, [callback.from_user], lang=lang)
         except Exception:
             # Ошибка приветствия не должна отменять успешное прохождение капчи.
             logger.exception("Welcome after captcha failed for %s in chat %s", target_id, chat_id)
@@ -200,13 +206,13 @@ async def check_captcha_answer(callback: CallbackQuery) -> None:
     attempts = int(state.get("attempts", 0)) + 1
     if attempts >= MAX_ATTEMPTS:
         await _cleanup(bot, chat_id, target_id)
-        await callback.answer("Неверно. Попытки закончились.", show_alert=True)
-        await apply_sanction(bot, chat_id, target_id, "kick", "Капча не пройдена", 0)
+        await callback.answer(t(lang, "captcha_no_attempts"), show_alert=True)
+        await apply_sanction(bot, chat_id, target_id, "kick", t(lang, "captcha_failed_reason"), 0, lang=lang)
         return
 
     ttl = await redis.ttl(key)
     await set_json(key, {**state, "attempts": attempts}, ex=ttl if ttl and ttl > 0 else 60)
-    await callback.answer(f"Неверно. Осталось попыток: {MAX_ATTEMPTS - attempts}", show_alert=True)
+    await callback.answer(t(lang, "captcha_wrong", left=MAX_ATTEMPTS - attempts), show_alert=True)
 
 
 async def captcha_timeout(chat_id: int, user_id: int, kick: bool = True, bot_id: int | None = None) -> None:
@@ -220,4 +226,5 @@ async def captcha_timeout(chat_id: int, user_id: int, kick: bool = True, bot_id:
         return  # уже прошёл капчу
     await _cleanup(bot, chat_id, user_id)
     if kick:
-        await apply_sanction(bot, chat_id, user_id, "kick", "Капча не пройдена вовремя", 0)
+        lang = await get_chat_lang(chat_id)
+        await apply_sanction(bot, chat_id, user_id, "kick", t(lang, "captcha_timeout_reason"), 0, lang=lang)

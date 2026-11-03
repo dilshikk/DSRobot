@@ -21,8 +21,15 @@ async def set_json(key: str, value: Any, ex: int | None = None) -> None:
 
 
 async def incr_with_ttl(key: str, ttl_seconds: int) -> int:
-    """Инкрементирует счётчик (antiflood/throttling) и выставляет TTL при первом инкременте."""
-    val = await redis.incr(key)
-    if val == 1:
-        await redis.expire(key, ttl_seconds)
-    return val
+    """
+    Инкрементирует счётчик (antiflood/antispam) с TTL от первого инкремента.
+
+    issue #49: раньше INCR и EXPIRE были отдельными командами: если процесс падал
+между ними, ключ оставался без TTL и счётчик рос вечно. Теперь SET NX EX создаёт
+ключ сразу с TTL, а INCR идёт в той же транзакции MULTI/EXEC.
+    """
+    async with redis.pipeline(transaction=True) as pipe:
+        pipe.set(key, 0, ex=ttl_seconds, nx=True)
+        pipe.incr(key)
+        _, value = await pipe.execute()
+    return int(value)

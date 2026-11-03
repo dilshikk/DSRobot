@@ -1,0 +1,11 @@
+{
+  "welcome_default": "Welcome, {mention}!",
+  "goodbye_default": "{mention} left the chat.",
+  "not_admin": "You don't have permission to use this command.",
+  "user_banned": "{mention} has been banned.",
+  "user_muted": "{mention} has been muted.",
+  "user_warned": "{mention} received a warning ({count}/{max}).",
+  "captcha_prompt": "{mention}, solve this to get access: {question}",
+  "captcha_ok": "Verified, welcome!",
+  "help_text": "I'm a group/channel management bot. Command list: /commands"
+}

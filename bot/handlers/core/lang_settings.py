@@ -5,6 +5,7 @@ from aiogram.types import Message
 
 from bot.database import SessionFactory
 from bot.filters.roles import HasRole
+from bot.services.chat_lang import remember_chat_lang
 from bot.services.settings_service import get_or_create_chat
 from bot.utils.i18n import AVAILABLE_LANGS, t
 
@@ -21,5 +22,7 @@ async def set_lang(message: Message, command: CommandObject, lang: str = "ru") -
         chat = await get_or_create_chat(session, message.chat.id, message.chat.title or "")
         chat.lang = new_lang
         await session.commit()
+    # Капча и фоновые задачи читают язык из кэша — обновляем его сразу.
+    await remember_chat_lang(message.chat.id, new_lang)
     # Подтверждение — уже на новом языке.
     await message.answer(t(new_lang, "lang_changed"))

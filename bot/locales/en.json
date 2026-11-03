@@ -98,6 +98,8 @@
   "delcommands_off": "✅ Command auto-deletion disabled.",
   "nsfw_provider_missing": "⚠️ An image classification provider must be configured in .env",
   "antispam_reason": "Antispam: repeated messages",
+  "antispam_usage": "Usage: /setantispam REPEATS [MUTE_MINUTES]\nRepeats from {min} to {max}, minutes from 1 to {max_minutes} (default 30).",
+  "antispam_set": "✅ Antispam: {minutes} min. mute after {threshold} identical messages in a row.",
 
   "block_usage": "Usage: /block {options}",
   "unblock_usage": "Usage: /unblock {options}",

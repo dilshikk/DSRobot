@@ -33,3 +33,8 @@ async def incr_with_ttl(key: str, ttl_seconds: int) -> int:
         pipe.incr(key)
         _, value = await pipe.execute()
     return int(value)
+
+
+async def close_redis() -> None:
+    """Закрывает пул соединений Redis при остановке бота (issue #13)."""
+    await redis.aclose()

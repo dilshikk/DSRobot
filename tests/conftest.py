@@ -23,6 +23,28 @@ os.environ.setdefault("POSTGRES_HOST", "localhost")
 os.environ.setdefault("REDIS_HOST", "localhost")
 
 
+def _gh_escape(text: str) -> str:
+    # Экранирование для workflow-команд GitHub Actions (::error ...::message).
+    return text.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+
+
+def pytest_terminal_summary(terminalreporter):
+    """
+    В GitHub Actions выводит упавшие тесты как аннотации (::error::), чтобы причина
+    была видна прямо в PR и на странице запуска, без открытия полного лога.
+    """
+    if os.environ.get("GITHUB_ACTIONS") != "true":
+        return
+    reports = terminalreporter.stats.get("failed", []) + terminalreporter.stats.get("error", [])
+    for report in reports:
+        nodeid = getattr(report, "nodeid", "") or "collection"
+        path = nodeid.split("::", 1)[0]
+        details = (getattr(report, "longreprtext", "") or "")[-3000:]
+        terminalreporter.write_line(
+            f"::error file={path},title={_gh_escape(nodeid)}::{_gh_escape(details)}"
+        )
+
+
 class InMemoryRedis:
     """Минимальная асинхронная замена redis.asyncio.Redis (decode_responses=True)."""
 

@@ -2,12 +2,15 @@
 Captcha (1 mode: math) на inline-кнопках.
 
 Поток: новый участник -> restrict (нельзя писать) -> бот присылает пример с кнопками
-вариантов ответа -> участник нажимает кнопку -> unrestrict + удаление сообщения капчи.
-Если не ответил за timeout_sec или исчерпал попытки -> кик (настраивается kick_on_fail).
+вариантов ответа -> участник нажимает кнопку -> unrestrict + удаление сообщения капчи
++ приветствие. Если не ответил за timeout_sec или исчерпал попытки -> кик
+(настраивается kick_on_fail).
 
 Почему кнопки, а не текстовый ответ (issue #3): после restrict(can_send_messages=False)
 участник физически не может отправить сообщение с ответом, поэтому текстовую капчу
 пройти было невозможно. Нажатие inline-кнопки доступно и ограниченному участнику.
+
+Запуск капчи вызывается из welcome/service_events.py (issue #1).
 """
 from __future__ import annotations
 
@@ -22,14 +25,16 @@ from aiogram.types import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     Message,
+    User,
 )
 
 from bot.database import SessionFactory
 from bot.filters.roles import HasRole
+from bot.handlers.welcome.welcome import greet_members
 from bot.services.cache import get_json, redis, set_json
 from bot.services.moderation_actions import apply_sanction
 from bot.services.scheduler import schedule_once, scheduler
-from bot.services.settings_service import update_settings
+from bot.services.settings_service import get_settings, update_settings
 
 router = Router(name="captcha")
 
@@ -102,41 +107,46 @@ async def toggle_captcha(message: Message, chat_settings: dict) -> None:
     await message.answer(f"Captcha: {'выключена' if new_state else 'включена (math)'}")
 
 
-@router.message(F.new_chat_members)
-async def start_captcha(message: Message, chat_settings: dict) -> None:
+async def start_captcha(bot: Bot, chat_id: int, chat_settings: dict, members: list[User]) -> list[int]:
+    """Запускает капчу для участников. Возвращает id тех, кому капча реально выдана."""
     cfg = chat_settings.get("captcha", {})
     if cfg.get("mode", "math") == "off":
-        return
+        return []
     timeout = int(cfg.get("timeout_sec", 120))
+    started: list[int] = []
 
-    for member in message.new_chat_members:
+    for member in members:
         if member.is_bot:
             continue
         try:
-            await message.bot.restrict_chat_member(message.chat.id, member.id, RESTRICTED)
+            await bot.restrict_chat_member(chat_id, member.id, RESTRICTED)
         except Exception:
             continue  # бот без прав ограничения — пропускаем капчу
 
         a, b = random.randint(1, 9), random.randint(1, 9)
         answer = a + b
         # Небольшой запас к TTL, чтобы джоб таймаута успел прочитать состояние.
-        await set_json(_state_key(message.chat.id, member.id), {"answer": answer, "attempts": 0}, ex=timeout + 60)
+        await set_json(_state_key(chat_id, member.id), {"answer": answer, "attempts": 0}, ex=timeout + 60)
 
-        sent = await message.answer(
+        sent = await bot.send_message(
+            chat_id,
             f"\U0001f510 {member.mention_html()}, нажмите правильный ответ, чтобы получить доступ: "
             f"<b>{a} + {b} = ?</b>\nНа ответ {timeout} сек.",
             parse_mode="HTML",
             reply_markup=_keyboard(member.id, _build_options(answer)),
         )
-        await redis.set(_msg_key(message.chat.id, member.id), sent.message_id, ex=timeout + 60)
+        await redis.set(_msg_key(chat_id, member.id), sent.message_id, ex=timeout + 60)
 
         run_at = datetime.now(timezone.utc) + timedelta(seconds=timeout)
         schedule_once(
             _captcha_timeout, run_at=run_at,
-            chat_id=message.chat.id, user_id=member.id,
+            chat_id=chat_id, user_id=member.id,
             kick=bool(cfg.get("kick_on_fail", True)),
-            job_id=_job_id(message.chat.id, member.id),
+            job_id=_job_id(chat_id, member.id),
         )
+        started.append(member.id)
+
+    return started
 
 
 @router.callback_query(F.data.startswith(f"{CALLBACK_PREFIX}:"))
@@ -168,6 +178,13 @@ async def check_captcha_answer(callback: CallbackQuery) -> None:
             return await callback.answer("Не удалось снять ограничения, обратитесь к админу.", show_alert=True)
         await _cleanup(bot, chat_id, target_id)
         await callback.answer("Проверка пройдена, добро пожаловать!")
+        # Приветствие откладывалось до прохождения капчи (см. service_events.py).
+        async with SessionFactory() as session:
+            chat_settings = await get_settings(session, chat_id)
+        try:
+            await greet_members(bot, chat_id, chat_settings, [callback.from_user])
+        except Exception:
+            pass
         return
 
     attempts = int(state.get("attempts", 0)) + 1

@@ -1,8 +1,9 @@
 """
 Antispam: эвристики против дубликатов сообщений (одно и то же сообщение подряд N раз)
 + точка расширения под внешний CAS (Combot Anti-Spam) / собственную ML-модель.
+Проверка вызывается из bot/middlewares/moderation_pipeline.py.
 """
-from aiogram import Router, F
+from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
 
@@ -11,28 +12,32 @@ from bot.services.cache import redis
 from bot.services.moderation_actions import apply_sanction
 from bot.services.settings_service import update_settings
 from bot.database import SessionFactory
+from bot.utils.permissions import is_privileged
 
 router = Router(name="antispam")
 
 DUPLICATE_THRESHOLD = 3
 
 
-@router.message(F.text, ~F.text.startswith("/"))
-async def check_duplicate_spam(message: Message, chat_settings: dict, chat_user_role: str = "member") -> None:
-    if not chat_settings.get("antispam", {}).get("enabled") or chat_user_role in ("admin", "owner", "developer"):
-        return
+async def check_duplicate_spam(message: Message, chat_settings: dict, chat_user_role: str) -> bool:
+    if not message.text or not chat_settings.get("antispam", {}).get("enabled") or is_privileged(chat_user_role):
+        return False
     key = f"lastmsg:{message.chat.id}:{message.from_user.id}"
+    count_key = f"dupcount:{message.chat.id}:{message.from_user.id}"
     prev = await redis.get(key)
-    if prev == message.text:
-        count_key = f"dupcount:{message.chat.id}:{message.from_user.id}"
-        count = await redis.incr(count_key)
-        await redis.expire(count_key, 30)
-        if count >= DUPLICATE_THRESHOLD:
-            await apply_sanction(message.bot, message.chat.id, message.from_user.id, "mute",
-                                  "Antispam: повторяющиеся сообщения", 0, duration_minutes=30)
-    else:
-        await redis.delete(f"dupcount:{message.chat.id}:{message.from_user.id}")
-    await redis.set(key, message.text or "", ex=30)
+    await redis.set(key, message.text, ex=30)
+    if prev != message.text:
+        await redis.delete(count_key)
+        return False
+
+    count = await redis.incr(count_key)
+    await redis.expire(count_key, 30)
+    if count >= DUPLICATE_THRESHOLD:
+        await redis.delete(count_key)
+        await apply_sanction(message.bot, message.chat.id, message.from_user.id, "mute",
+                              "Antispam: повторяющиеся сообщения", 0, duration_minutes=30)
+        return True
+    return False
 
 
 @router.message(Command("antispam"), HasRole("admin"))

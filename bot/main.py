@@ -21,6 +21,7 @@ from bot.handlers.welcome import captcha as captcha_handler
 from bot.handlers.chat import recurring_messages as recurring_handler
 from bot.middlewares.antiflood import AntiFloodMiddleware
 from bot.middlewares.chat_context import ChatContextMiddleware
+from bot.middlewares.moderation_pipeline import ModerationPipelineMiddleware
 from bot.middlewares.throttling import ThrottlingMiddleware
 from bot.services.scheduler import scheduler, start as start_scheduler
 
@@ -33,10 +34,12 @@ async def main() -> None:
     dp = Dispatcher()
 
     # Middleware Layer (см. архитектуру): порядок важен — сначала контекст чата
-    # (роль, настройки), затем throttling команд, затем anti-flood для обычных сообщений.
+    # (роль, настройки), затем throttling команд, затем anti-flood для обычных сообщений,
+    # затем единая цепочка авто-модерации (issue #1).
     dp.message.middleware(ChatContextMiddleware())
     dp.message.middleware(ThrottlingMiddleware())
     dp.message.middleware(AntiFloodMiddleware())
+    dp.message.middleware(ModerationPipelineMiddleware())
 
     register_all_routers(dp)
 

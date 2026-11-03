@@ -1,6 +1,10 @@
 """
 Throttling / Rate Limiter middleware — защита от спама командами (не путать с anti-flood
-фичей для обычных сообщений, см. handlers/moderation/antiflood.py).
+фичей для обычных сообщений, см. bot/middlewares/antiflood.py).
+
+Важно (issue #1): ограничиваются ТОЛЬКО команды. Раньше молча отбрасывалось любое
+сообщение, пришедшее быстрее чем через секунду, и такие сообщения обходили все
+проверки модерации (их никто не удалял и не проверял).
 """
 from __future__ import annotations
 
@@ -24,12 +28,12 @@ class ThrottlingMiddleware(BaseMiddleware):
         event: TelegramObject,
         data: dict[str, Any],
     ) -> Any:
-        if not isinstance(event, Message) or not event.from_user:
+        if not isinstance(event, Message) or not event.from_user or not (event.text or "").startswith("/"):
             return await handler(event, data)
 
         key = f"throttle:{event.chat.id}:{event.from_user.id}"
         if await redis.exists(key):
-            return  # молча игнорируем — сообщение прилетело слишком быстро
+            return  # молча игнорируем — команда прилетела слишком быстро
         await redis.set(key, 1, px=int(self.rate_limit * 1000))
 
         return await handler(event, data)

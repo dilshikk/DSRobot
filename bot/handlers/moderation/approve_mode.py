@@ -1,5 +1,6 @@
-"""Approve mode: сообщения новых участников фильтруются, пока их не одобрит админ."""
-from aiogram import Router, F
+"""Approve mode: сообщения новых участников фильтруются, пока их не одобрит админ.
+Проверка вызывается из moderation_pipeline."""
+from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
 from sqlalchemy import select
@@ -8,6 +9,7 @@ from bot.database import SessionFactory
 from bot.database.models import ChatUser
 from bot.filters.roles import HasRole
 from bot.services.settings_service import update_settings
+from bot.utils.permissions import is_privileged
 
 router = Router(name="approve_mode")
 
@@ -38,16 +40,19 @@ async def toggle_approve_mode(message: Message, chat_settings: dict) -> None:
     await message.answer(f"Approve mode: {'включён' if new_state else 'выключен'}")
 
 
-@router.message(F.text | F.photo | F.video | F.sticker, ~F.text.startswith("/"))
-async def gate_unapproved(message: Message, chat_settings: dict, chat_user_role: str = "member") -> None:
-    if not chat_settings.get("approve_mode", {}).get("enabled") or chat_user_role in ("admin", "owner", "developer"):
-        return
+async def check_unapproved(message: Message, chat_settings: dict, chat_user_role: str) -> bool:
+    if not chat_settings.get("approve_mode", {}).get("enabled") or is_privileged(chat_user_role):
+        return False
+    if not (message.text or message.photo or message.video or message.sticker):
+        return False
     async with SessionFactory() as session:
         cu = (await session.execute(
             select(ChatUser).where(ChatUser.chat_id == message.chat.id, ChatUser.user_id == message.from_user.id)
         )).scalar_one_or_none()
-    if not cu or not cu.approved:
-        try:
-            await message.delete()
-        except Exception:
-            pass
+    if cu and cu.approved:
+        return False
+    try:
+        await message.delete()
+    except Exception:
+        pass
+    return True

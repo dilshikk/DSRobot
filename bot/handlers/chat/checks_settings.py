@@ -2,10 +2,11 @@
 Checks settings: периодическая самопроверка бота — есть ли у него нужные права
 администратора в чате (нужно для модерации/капчи/night-mode и т.п.).
 """
-from aiogram import Router
+from aiogram import F, Router
 from aiogram.filters import Command
 
 router = Router(name="checks_settings")
+router.message.filter(F.chat.type.in_({"group", "supergroup"}))  # в личке нет chat_settings (issue #45)
 
 REQUIRED_RIGHTS = ["can_delete_messages", "can_restrict_members", "can_invite_users", "can_pin_messages"]
 

@@ -19,7 +19,8 @@ router = Router(name="approve_mode")
 @router.message(Command("approve"), HasRole("admin"))
 async def approve_user(message: Message, lang: str = "ru") -> None:
     reply = message.reply_to_message
-    if not reply or not reply.from_user:
+    # Сообщение от имени канала/анонимного админа: from_user — служебный бот, одобрять некого.
+    if not reply or not reply.from_user or reply.sender_chat:
         await message.answer(t(lang, "approve_usage"))
         return
     target_id = reply.from_user.id

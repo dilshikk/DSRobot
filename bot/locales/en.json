@@ -103,6 +103,7 @@
   "addrole_done": "✅ Role «{name}» created with permissions: {perms}",
   "setrole_usage": "Reply to a message and specify: /setrole ROLE_NAME",
   "role_not_found": "No role with that name was found.",
+  "role_exists": "Role «{name}» already exists in this chat.",
   "setrole_done": "✅ Role «{name}» assigned to the user.",
 
   "promote_usage": "Reply to the message of the user you want to promote.",
@@ -114,6 +115,7 @@
   "whoami_role": "Your role in this chat: {role}",
 
   "rights_missing": "⚠️ The bot doesn't have enough rights to {action}. Make it an admin with permission to delete messages and ban users.",
+  "telegram_error": "⚠️ Telegram rejected the action: {error}",
   "rights_action_delete": "delete messages",
   "rights_action_captcha": "run captcha for new members",
   "rights_action_kick_bots": "remove added bots",

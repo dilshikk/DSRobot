@@ -6,6 +6,7 @@ from aiogram.types import Message
 from bot.database import SessionFactory
 from bot.filters.roles import HasRole
 from bot.services.settings_service import get_or_create_chat
+from bot.utils.parsing import parse_chat_id
 
 router = Router(name="discussion_group")
 
@@ -13,11 +14,12 @@ router = Router(name="discussion_group")
 @router.message(Command("linkdiscussion"), HasRole("owner"))
 async def link_discussion(message: Message, command: CommandObject) -> None:
     """Использование (в канале, куда добавлен бот): /linkdiscussion <group_id>"""
-    if not command.args or not command.args.lstrip("-").isdigit():
+    target_id = parse_chat_id(command.args)
+    if target_id is None:
         await message.answer("Использование: /linkdiscussion <id группы обсуждений>")
         return
     async with SessionFactory() as session:
         chat = await get_or_create_chat(session, message.chat.id, message.chat.title or "", message.chat.type)
-        chat.discussion_group_id = int(command.args)
+        chat.discussion_group_id = target_id
         await session.commit()
     await message.answer("\u2705 Группа обсуждений привязана. Комментарии под постами будут модерироваться ботом.")

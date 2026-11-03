@@ -10,10 +10,10 @@ from datetime import datetime, timedelta, timezone
 
 from aiogram import Bot
 from aiogram.types import ChatPermissions
-from sqlalchemy import select
 
 from bot.database import SessionFactory
-from bot.database.models import AuditLog, Chat, ChatUser
+from bot.database.models import AuditLog, Chat
+from bot.services.user_service import ensure_chat_user, upsert_user
 
 MUTED_PERMISSIONS = ChatPermissions(can_send_messages=False)
 UNMUTED_PERMISSIONS = ChatPermissions(
@@ -56,15 +56,13 @@ async def apply_sanction(
         session.add(AuditLog(chat_id=chat_id, target_user_id=user_id, actor_user_id=actor_user_id,
                               action=action, reason=reason))
 
-        cu = (await session.execute(
-            select(ChatUser).where(ChatUser.chat_id == chat_id, ChatUser.user_id == user_id)
-        )).scalar_one_or_none()
-        if cu is None:
-            cu = ChatUser(chat_id=chat_id, user_id=user_id)
-            session.add(cu)
+        # Цель санкции могла ни разу не писать в чат (санкция по id / reply на старое
+        # сообщение) — гарантируем наличие User (FK) и ChatUser с warns=0 (issue #4).
+        await upsert_user(session, user_id)
+        cu = await ensure_chat_user(session, chat_id, user_id)
 
         if action == "warn":
-            cu.warns += 1
+            cu.warns = (cu.warns or 0) + 1
         elif action == "mute":
             cu.muted_until = until
         elif action == "ban":

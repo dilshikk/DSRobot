@@ -1,7 +1,8 @@
 """
 Chat Context Middleware.
-Загружает/создаёт Chat + ChatSettings, определяет роль отправителя в чате
-(через Telegram get_chat_member, с кэшем в Redis) и прокидывает всё в handler data.
+Загружает/создаёт Chat + ChatSettings, сохраняет отправителя в users/chat_users,
+определяет роль отправителя в чате (через Telegram get_chat_member, с кэшем в Redis)
+и прокидывает всё в handler data.
 Поддерживает анонимных админов (sender_chat) — Support for anonymous admins.
 """
 from __future__ import annotations
@@ -9,13 +10,26 @@ from __future__ import annotations
 from typing import Any, Awaitable, Callable
 
 from aiogram import BaseMiddleware
-from aiogram.types import ChatMemberAdministrator, ChatMemberOwner, Message, TelegramObject, Update
+from aiogram.types import ChatMemberAdministrator, ChatMemberOwner, Message, TelegramObject, User as TgUser
 
 from bot.database import SessionFactory
 from bot.services.cache import get_json, set_json
 from bot.services.settings_service import get_or_create_chat, get_settings
+from bot.services.user_service import ensure_chat_user, upsert_tg_user
 
 ROLE_CACHE_TTL = 60
+# Как часто (сек) обновлять users/chat_users для одного и того же человека в чате.
+# Без этого каждое сообщение давало бы лишнюю запись в PostgreSQL.
+SEEN_CACHE_TTL = 600
+
+
+def _extract_message(event: TelegramObject) -> Message | None:
+    # Middleware висит на dp.message, поэтому event — это сам Message.
+    # Раньше код искал event.message / data["event_message"], которых у Message нет,
+    # и middleware молча пропускал все сообщения без контекста.
+    if isinstance(event, Message):
+        return event
+    return getattr(event, "message", None)
 
 
 class ChatContextMiddleware(BaseMiddleware):
@@ -25,27 +39,47 @@ class ChatContextMiddleware(BaseMiddleware):
         event: TelegramObject,
         data: dict[str, Any],
     ) -> Any:
-        message: Message | None = data.get("event_message") or getattr(event, "message", None)
-        chat = getattr(message, "chat", None) if message else None
+        message = _extract_message(event)
+        chat = message.chat if message else None
 
         if chat is None or chat.type == "private":
             return await handler(event, data)
+
+        user = message.from_user
+        is_anonymous_admin = bool(message.sender_chat and message.sender_chat.id == chat.id)
 
         async with SessionFactory() as session:
             await get_or_create_chat(session, chat.id, chat.title or "", chat.type)
             data["chat_settings"] = await get_settings(session, chat.id)
 
-        # Анонимный админ пишет от имени sender_chat == chat.id
-        if message and message.sender_chat and message.sender_chat.id == chat.id:
+            # Анонимный админ приходит от служебного аккаунта GroupAnonymousBot — его не сохраняем.
+            if user and not is_anonymous_admin:
+                await self._remember_users(session, chat.id, [user, *(message.new_chat_members or [])])
+
+        if is_anonymous_admin:
             data["chat_user_role"] = "admin"
             data["is_anonymous_admin"] = True
             return await handler(event, data)
 
-        user = getattr(message, "from_user", None) if message else None
         if user:
             data["chat_user_role"] = await self._resolve_role(event, chat.id, user.id, data)
 
         return await handler(event, data)
+
+    @staticmethod
+    async def _remember_users(session, chat_id: int, users: list[TgUser]) -> None:
+        changed = False
+        for tg_user in {u.id: u for u in users}.values():
+            seen_key = f"seen:{chat_id}:{tg_user.id}"
+            if await get_json(seen_key) is not None:
+                continue
+            await upsert_tg_user(session, tg_user)
+            await ensure_chat_user(session, chat_id, tg_user.id)
+            changed = True
+        if changed:
+            await session.commit()
+            for tg_user in users:
+                await set_json(f"seen:{chat_id}:{tg_user.id}", 1, ex=SEEN_CACHE_TTL)
 
     @staticmethod
     async def _resolve_role(event, chat_id: int, user_id: int, data: dict[str, Any]) -> str:

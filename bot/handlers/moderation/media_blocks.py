@@ -1,4 +1,5 @@
-"""Media blocks: photo / video / sticker / gif / voice / document. Проверка вызывается из moderation_pipeline."""
+"""Media blocks: photo / video / sticker / gif / voice / document. Проверка вызывается из moderation_pipeline.
+Ответы — на языке чата (issue #12)."""
 from aiogram import Router
 from aiogram.filters import Command, CommandObject
 from aiogram.types import Message
@@ -6,6 +7,7 @@ from aiogram.types import Message
 from bot.database import SessionFactory
 from bot.filters.roles import HasRole
 from bot.services.settings_service import update_settings
+from bot.utils.i18n import t
 from bot.utils.permissions import is_privileged
 from bot.utils.telegram import delete_message_safely
 
@@ -22,14 +24,14 @@ MEDIA_MAP = {
 
 
 @router.message(Command("blockmedia"), HasRole("admin"))
-async def block_media(message: Message, command: CommandObject) -> None:
+async def block_media(message: Message, command: CommandObject, lang: str = "ru") -> None:
     key = (command.args or "").strip().lower()
     if key not in MEDIA_MAP:
-        await message.answer(f"Использование: /blockmedia <{'|'.join(MEDIA_MAP)}>")
+        await message.answer(t(lang, "blockmedia_usage", options=" | ".join(MEDIA_MAP)))
         return
     async with SessionFactory() as session:
         await update_settings(session, message.chat.id, "media_blocks", {key: True})
-    await message.answer(f"\u2705 Медиа-блок «{key}» включён.")
+    await message.answer(t(lang, "media_block_on", key=key))
 
 
 async def check_media_block(message: Message, chat_settings: dict, chat_user_role: str) -> bool:

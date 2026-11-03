@@ -69,9 +69,49 @@
   "maxlen_set": "✅ Maximum message length: {limit}",
   "maxlen_off": "— (off)",
 
+  "feature_state": "{feature}: {state}",
+  "state_on": "on",
+  "state_off": "off",
+  "feature_approve_mode": "Approve mode",
+  "feature_anti_nsfw": "Anti-NSFW",
+  "feature_antispam": "Antispam",
+  "feature_masked_links": "Masked link filter",
+  "feature_clean_service": "Service message cleanup",
+  "nsfw_provider_missing": "⚠️ An image classification provider must be configured in .env",
+  "antispam_reason": "Antispam: repeated messages",
+
+  "block_usage": "Usage: /block {options}",
+  "unblock_usage": "Usage: /unblock {options}",
+  "block_on": "✅ Block «{key}» enabled.",
+  "block_off": "✅ Block «{key}» disabled.",
+  "blockmedia_usage": "Usage: /blockmedia {options}",
+  "media_block_on": "✅ Media block «{key}» enabled.",
+
+  "approve_usage": "Reply to the user's message: /approve",
+  "approve_done": "✅ User approved.",
+
+  "banchannel_usage": "Reply to a comment posted on behalf of a channel.",
+  "banchannel_done": "✅ Channel banned in this group.",
+  "banchannel_failed": "⚠️ Couldn't ban the channel: {error}",
+
+  "addrole_usage": "Usage: /addrole NAME PERM1,PERM2\nAvailable permissions: {perms}",
+  "addrole_done": "✅ Role «{name}» created with permissions: {perms}",
+  "setrole_usage": "Reply to a message and specify: /setrole ROLE_NAME",
+  "role_not_found": "No role with that name was found.",
+  "setrole_done": "✅ Role «{name}» assigned to the user.",
+
+  "promote_usage": "Reply to the message of the user you want to promote.",
+  "promote_done": "⬆️ {mention} is now an administrator.",
+  "demote_usage": "Reply to the message of the administrator you want to demote.",
+  "demote_done": "⬇️ {mention} is no longer an administrator.",
+
+  "whoami_anonymous": "👻 You are writing as an anonymous administrator — recognized.",
+  "whoami_role": "Your role in this chat: {role}",
+
   "rights_missing": "⚠️ The bot doesn't have enough rights to {action}. Make it an admin with permission to delete messages and ban users.",
   "rights_action_delete": "delete messages",
   "rights_action_captcha": "run captcha for new members",
+  "rights_action_kick_bots": "remove added bots",
 
   "user_banned": "🚫 {mention} has been banned.",
   "user_unbanned": "✅ Unbanned.",

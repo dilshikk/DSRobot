@@ -1,6 +1,7 @@
 """Blocks settings: forwards / links / usernames-mentions / bots / inline-queries.
 
 Проверка пересылок вызывается из moderation_pipeline, блок ботов — из service_events (issue #1).
+Ответы — на языке чата (issue #12).
 """
 import logging
 
@@ -12,35 +13,36 @@ from aiogram.types import Message, User
 from bot.database import SessionFactory
 from bot.filters.roles import HasRole
 from bot.services.settings_service import update_settings
+from bot.utils.i18n import t
 from bot.utils.permissions import is_privileged
 from bot.utils.telegram import delete_message_safely, is_rights_error, notify_missing_rights
 
 router = Router(name="blocks")
 logger = logging.getLogger(__name__)
 
-TOGGLES = {"forwards", "links", "usernames", "bots", "inline"}
+# Кортеж, а не set: порядок в подсказке «Использование» должен быть стабильным.
+TOGGLES = ("forwards", "links", "usernames", "bots", "inline")
+
+
+async def _set_block(message: Message, command: CommandObject, lang: str, enabled: bool) -> None:
+    key = (command.args or "").strip().lower()
+    if key not in TOGGLES:
+        usage_key = "block_usage" if enabled else "unblock_usage"
+        await message.answer(t(lang, usage_key, options=" | ".join(TOGGLES)))
+        return
+    async with SessionFactory() as session:
+        await update_settings(session, message.chat.id, "blocks", {key: enabled})
+    await message.answer(t(lang, "block_on" if enabled else "block_off", key=key))
 
 
 @router.message(Command("block"), HasRole("admin"))
-async def block_toggle(message: Message, command: CommandObject) -> None:
-    key = (command.args or "").strip().lower()
-    if key not in TOGGLES:
-        await message.answer(f"Использование: /block <{'|'.join(TOGGLES)}>")
-        return
-    async with SessionFactory() as session:
-        await update_settings(session, message.chat.id, "blocks", {key: True})
-    await message.answer(f"\u2705 Блокировка «{key}» включена.")
+async def block_toggle(message: Message, command: CommandObject, lang: str = "ru") -> None:
+    await _set_block(message, command, lang, enabled=True)
 
 
 @router.message(Command("unblock"), HasRole("admin"))
-async def unblock_toggle(message: Message, command: CommandObject) -> None:
-    key = (command.args or "").strip().lower()
-    if key not in TOGGLES:
-        await message.answer(f"Использование: /unblock <{'|'.join(TOGGLES)}>")
-        return
-    async with SessionFactory() as session:
-        await update_settings(session, message.chat.id, "blocks", {key: False})
-    await message.answer(f"\u2705 Блокировка «{key}» выключена.")
+async def unblock_toggle(message: Message, command: CommandObject, lang: str = "ru") -> None:
+    await _set_block(message, command, lang, enabled=False)
 
 
 def _is_forwarded(message: Message) -> bool:
@@ -72,7 +74,8 @@ async def kick_blocked_bots(bot: Bot, chat_id: int, chat_settings: dict, members
             except TelegramBadRequest as exc:
                 logger.warning("Cannot kick bot %s from chat %s: %s", member.id, chat_id, exc)
                 if is_rights_error(exc):
-                    await notify_missing_rights(bot, chat_id, "удалять добавленных ботов")
+                    # Ключ локали: notify_missing_rights сам подставит язык чата.
+                    await notify_missing_rights(bot, chat_id, "rights_action_kick_bots")
             except TelegramAPIError as exc:
                 logger.warning("Cannot kick bot %s from chat %s: %s", member.id, chat_id, exc)
         remaining.append(member)

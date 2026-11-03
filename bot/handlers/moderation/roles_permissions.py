@@ -1,17 +1,19 @@
-"""Roles and permissions hierarchy: promote/demote внутри Telegram admin API."""
+"""Roles and permissions hierarchy: promote/demote внутри Telegram admin API.
+Ответы — на языке чата (issue #12)."""
 from aiogram import Router
 from aiogram.filters import Command
-from aiogram.types import ChatPermissions, Message
+from aiogram.types import Message
 
 from bot.filters.roles import HasRole
+from bot.utils.i18n import t
 
 router = Router(name="roles_permissions")
 
 
 @router.message(Command("promote"), HasRole("owner"))
-async def promote(message: Message) -> None:
-    if not message.reply_to_message:
-        await message.answer("Ответьте на сообщение пользователя, которого нужно повысить.")
+async def promote(message: Message, lang: str = "ru") -> None:
+    if not message.reply_to_message or not message.reply_to_message.from_user:
+        await message.answer(t(lang, "promote_usage"))
         return
     target = message.reply_to_message.from_user
     await message.bot.promote_chat_member(
@@ -19,13 +21,13 @@ async def promote(message: Message) -> None:
         can_delete_messages=True, can_restrict_members=True, can_invite_users=True,
         can_pin_messages=True, can_manage_chat=True,
     )
-    await message.answer(f"\u2b06\ufe0f {target.mention_html()} назначен(а) администратором.", parse_mode="HTML")
+    await message.answer(t(lang, "promote_done", mention=target.mention_html()), parse_mode="HTML")
 
 
 @router.message(Command("demote"), HasRole("owner"))
-async def demote(message: Message) -> None:
-    if not message.reply_to_message:
-        await message.answer("Ответьте на сообщение администратора, которого нужно понизить.")
+async def demote(message: Message, lang: str = "ru") -> None:
+    if not message.reply_to_message or not message.reply_to_message.from_user:
+        await message.answer(t(lang, "demote_usage"))
         return
     target = message.reply_to_message.from_user
     await message.bot.promote_chat_member(
@@ -33,4 +35,4 @@ async def demote(message: Message) -> None:
         can_delete_messages=False, can_restrict_members=False, can_invite_users=False,
         can_pin_messages=False, can_manage_chat=False,
     )
-    await message.answer(f"\u2b07\ufe0f {target.mention_html()} больше не администратор.", parse_mode="HTML")
+    await message.answer(t(lang, "demote_done", mention=target.mention_html()), parse_mode="HTML")

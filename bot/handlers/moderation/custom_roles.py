@@ -1,4 +1,7 @@
-"""Custom roles: именованные наборы прав (не полноценный admin Telegram, а внутренняя роль бота)."""
+"""Custom roles: именованные наборы прав (не полноценный admin Telegram, а внутренняя роль бота).
+Ответы — на языке чата (issue #12)."""
+from html import escape
+
 from aiogram import Router
 from aiogram.filters import Command, CommandObject
 from aiogram.types import Message
@@ -9,31 +12,36 @@ from bot.database.models import ChatUser, CustomRole
 from bot.filters.roles import HasRole
 from bot.services.roles import invalidate_role
 from bot.services.user_service import ensure_chat_user, upsert_tg_user
+from bot.utils.i18n import t
 from bot.utils.permissions import CUSTOM_ROLE_PERMISSIONS
 
 router = Router(name="custom_roles")
 
 
+def role_created_text(lang: str, name: str, perms: list[str]) -> str:
+    return t(lang, "addrole_done", name=escape(name), perms=", ".join(perms) or "\u2014")
+
+
 @router.message(Command("addrole"), HasRole("admin"))
-async def add_role(message: Message, command: CommandObject) -> None:
+async def add_role(message: Message, command: CommandObject, lang: str = "ru") -> None:
     """Использование: /addrole <name> <perm1,perm2,...>"""
     if not command.args or " " not in command.args:
-        await message.answer(f"Использование: /addrole <name> <{'|'.join(CUSTOM_ROLE_PERMISSIONS)}>")
+        await message.answer(t(lang, "addrole_usage", perms=", ".join(CUSTOM_ROLE_PERMISSIONS)))
         return
     name, perms_raw = command.args.split(maxsplit=1)
     perms = {p.strip(): True for p in perms_raw.split(",") if p.strip() in CUSTOM_ROLE_PERMISSIONS}
     async with SessionFactory() as session:
         session.add(CustomRole(chat_id=message.chat.id, name=name, permissions=perms))
         await session.commit()
-    await message.answer(f"\u2705 Роль «{name}» создана с правами: {', '.join(perms) or '—'}")
+    await message.answer(role_created_text(lang, name, list(perms)))
 
 
 @router.message(Command("setrole"), HasRole("admin"))
-async def set_role(message: Message, command: CommandObject) -> None:
+async def set_role(message: Message, command: CommandObject, lang: str = "ru") -> None:
     """Ответом на сообщение: /setrole <role_name>"""
     reply = message.reply_to_message
     if not reply or not reply.from_user or not command.args:
-        await message.answer("Ответьте на сообщение и укажите: /setrole <role_name>")
+        await message.answer(t(lang, "setrole_usage"))
         return
     role_name = command.args.strip()
     target = reply.from_user
@@ -42,7 +50,7 @@ async def set_role(message: Message, command: CommandObject) -> None:
             select(CustomRole).where(CustomRole.chat_id == message.chat.id, CustomRole.name == role_name)
         )).scalar_one_or_none()
         if not role:
-            await message.answer("Роль с таким именем не найдена.")
+            await message.answer(t(lang, "role_not_found"))
             return
         # users-строка должна существовать раньше chat_users (FK, см. issue #4).
         await upsert_tg_user(session, target)
@@ -52,4 +60,4 @@ async def set_role(message: Message, command: CommandObject) -> None:
         await session.commit()
     # Новая роль действует сразу, а не после истечения кэша.
     await invalidate_role(message.chat.id, target.id)
-    await message.answer(f"\u2705 Пользователю назначена роль «{role_name}».")
+    await message.answer(t(lang, "setrole_done", name=escape(role_name)))

@@ -51,6 +51,24 @@ async def chat_default_permissions(bot: Bot, chat_id: int) -> ChatPermissions:
 
 # Telegram ограничивает сообщение 4096 символами — не даём длинной причине сломать лог.
 MAX_REASON_LENGTH = 1000
+DEFAULT_MUTE_MINUTES = 60
+MAX_MUTE_MINUTES = 525600
+
+
+def parse_auto_action(args: str | None, actions: tuple[str, ...]) -> dict | None:
+    """"mute 30" -> {"action": "mute", "mute_minutes": 30}; минуты допустимы только у mute."""
+    parts = (args or "").lower().split()
+    action = parts[0] if parts else ""
+    minutes = parts[1] if len(parts) > 1 else str(DEFAULT_MUTE_MINUTES)
+    if (
+        action not in actions or len(parts) > 2 or (len(parts) == 2 and action != "mute")
+        or not minutes.isdigit() or not 1 <= int(minutes) <= MAX_MUTE_MINUTES
+    ):
+        return None
+    values: dict = {"action": action}
+    if action == "mute":
+        values["mute_minutes"] = int(minutes)
+    return values
 
 # Оставлено для обратной совместимости импортов.
 NO_RIGHTS_ERROR = t("ru", "sanction_no_rights")

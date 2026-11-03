@@ -13,7 +13,7 @@ from bot.filters.roles import HasRole
 from bot.services.cache import redis
 from bot.services.settings_service import update_settings
 from bot.utils.html_fallback import send_html_or_escaped
-from bot.utils.i18n import t
+from bot.utils.i18n import t, toggle_text
 from bot.utils.telegram import delete_by_id_safely
 
 router = Router(name="welcome")
@@ -34,6 +34,18 @@ async def welcome_off(message: Message, lang: str = "ru") -> None:
     async with SessionFactory() as session:
         await update_settings(session, message.chat.id, "welcome", {"enabled": False})
     await message.answer(t(lang, "welcome_disabled"))
+
+
+@router.message(Command("welcomeclean"), HasRole("admin"))
+async def set_welcome_clean(message: Message, command: CommandObject, lang: str = "ru") -> None:
+    """/welcomeclean on|off — удалять предыдущее приветствие при новом."""
+    arg = (command.args or "").strip().lower()
+    if arg not in ("on", "off"):
+        await message.answer(t(lang, "welcomeclean_usage"))
+        return
+    async with SessionFactory() as session:
+        await update_settings(session, message.chat.id, "welcome", {"clean_old": arg == "on"})
+    await message.answer(toggle_text(lang, "feature_welcome_clean", arg == "on"))
 
 
 def welcome_text(cfg: dict, lang: str, mention: str, escape_custom: bool = False) -> str:

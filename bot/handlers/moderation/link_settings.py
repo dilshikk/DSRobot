@@ -10,7 +10,7 @@ from aiogram.types import Message
 from bot.database import SessionFactory
 from bot.filters.roles import HasRole
 from bot.services.chat_lang import get_chat_lang
-from bot.services.moderation_actions import apply_sanction
+from bot.services.moderation_actions import DEFAULT_MUTE_MINUTES, apply_sanction, parse_auto_action
 from bot.services.settings_service import update_settings
 from bot.utils.i18n import t
 from bot.utils.permissions import is_privileged
@@ -20,8 +20,6 @@ router = Router(name="link_settings")
 
 URL_RE = re.compile(r"(https?://|t\.me/|www\.)[^\s]+", re.IGNORECASE)
 LINK_ACTIONS = ("delete", "warn", "mute", "ban", "off")
-DEFAULT_MUTE_MINUTES = 60
-MAX_MUTE_MINUTES = 525600
 
 
 def link_host(link: str) -> str:
@@ -56,21 +54,13 @@ def extract_links(message: Message) -> list[str]:
 
 @router.message(Command("linkaction"), HasRole("admin"))
 async def set_link_action(message: Message, command: CommandObject, lang: str = "ru") -> None:
-    parts = (command.args or "").lower().split()
-    action = parts[0] if parts else ""
-    minutes = parts[1] if len(parts) > 1 else str(DEFAULT_MUTE_MINUTES)
-    if (
-        action not in LINK_ACTIONS or len(parts) > 2 or (len(parts) == 2 and action != "mute")
-        or not minutes.isdigit() or not 1 <= int(minutes) <= MAX_MUTE_MINUTES
-    ):
+    values = parse_auto_action(command.args, LINK_ACTIONS)
+    if values is None:
         await message.answer(t(lang, "link_action_usage"))
         return
-    values: dict = {"action": action}
-    if action == "mute":
-        values["mute_minutes"] = int(minutes)
     async with SessionFactory() as session:
         await update_settings(session, message.chat.id, "link_settings", values)
-    await message.answer(t(lang, "link_action_set", action=action))
+    await message.answer(t(lang, "link_action_set", action=values["action"]))
 
 
 @router.message(Command("allowlink"), HasRole("admin"))

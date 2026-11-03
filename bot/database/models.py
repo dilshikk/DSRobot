@@ -85,11 +85,8 @@ class ChatSettings(Base):
         "warns": {"max_warns": 3, "action": "ban", "mute_minutes": 60},
         "banned_words": {"action": "delete", "mute_minutes": 60},
         "tag_admin": {"cooldown_sec": 300},
-        "tag_all": {"enabled": False},
         "max_message_length": {"enabled": False, "limit": 4000},
-        "topics": {"enabled": False},
         "alphabets": {"enabled": False, "allowed": ["cyrillic", "latin"]},
-        "privacy": {"user_privacy_mode": True},
     }
 
 

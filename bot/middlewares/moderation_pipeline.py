@@ -43,6 +43,7 @@ MESSAGE_CHECKS: list[Check] = [
     approve_mode.check_unapproved,
     night_mode.check_night_mode,
     blocks.check_forward_block,
+    blocks.check_content_blocks,
     media_blocks.check_media_block,
     anti_nsfw.check_nsfw,
     masked_users.check_masked_links,

@@ -10,10 +10,14 @@ Captcha (1 mode: math) на inline-кнопках.
 участник физически не может отправить сообщение с ответом, поэтому текстовую капчу
 пройти было невозможно. Нажатие inline-кнопки доступно и ограниченному участнику.
 
+Таймаут (issue #10): задача хранится в Redis и переживает перезапуск, а в аргументах
+хранит bot_id — кикает тот бот (основной или клон), который выдал капчу.
+
 Запуск капчи вызывается из welcome/service_events.py (issue #1).
 """
 from __future__ import annotations
 
+import logging
 import random
 from datetime import datetime, timedelta, timezone
 
@@ -31,14 +35,15 @@ from aiogram.types import (
 from bot.database import SessionFactory
 from bot.filters.roles import HasRole
 from bot.handlers.welcome.welcome import greet_members
+from bot.services.bot_registry import get_bot
 from bot.services.cache import get_json, redis, set_json
 from bot.services.moderation_actions import apply_sanction
-from bot.services.scheduler import schedule_once, scheduler
+from bot.services.scheduler import remove_job, schedule_once
 from bot.services.settings_service import get_settings, update_settings
 
 router = Router(name="captcha")
+logger = logging.getLogger(__name__)
 
-_bot_ref: Bot | None = None
 RESTRICTED = ChatPermissions(can_send_messages=False)
 UNRESTRICTED = ChatPermissions(
     can_send_messages=True, can_send_audios=True, can_send_documents=True,
@@ -47,12 +52,10 @@ UNRESTRICTED = ChatPermissions(
 CALLBACK_PREFIX = "cap"
 OPTIONS_COUNT = 4
 MAX_ATTEMPTS = 3
-
-
-def bind_bot(bot: Bot) -> None:
-    """Вызывается один раз при старте (main.py), чтобы отложенный kick-джоб знал, каким Bot пользоваться."""
-    global _bot_ref
-    _bot_ref = bot
+# Состояние капчи живёт заметно дольше таймаута: если бот был выключен, задача таймаута
+# выполнится после старта и должна ещё увидеть состояние. Иначе она решит, что капча
+# пройдена, и участник останется ограниченным навсегда (issue #10).
+STATE_GRACE_SEC = 3 * 24 * 3600
 
 
 def _state_key(chat_id: int, user_id: int) -> str:
@@ -94,9 +97,7 @@ async def _cleanup(bot: Bot, chat_id: int, user_id: int) -> None:
             await bot.delete_message(chat_id, int(msg_id))
         except Exception:
             pass
-    job = scheduler.get_job(_job_id(chat_id, user_id))
-    if job:
-        job.remove()
+    remove_job(_job_id(chat_id, user_id))
 
 
 @router.message(Command("captcha"), HasRole("admin"))
@@ -125,8 +126,8 @@ async def start_captcha(bot: Bot, chat_id: int, chat_settings: dict, members: li
 
         a, b = random.randint(1, 9), random.randint(1, 9)
         answer = a + b
-        # Небольшой запас к TTL, чтобы джоб таймаута успел прочитать состояние.
-        await set_json(_state_key(chat_id, member.id), {"answer": answer, "attempts": 0}, ex=timeout + 60)
+        ttl = timeout + STATE_GRACE_SEC
+        await set_json(_state_key(chat_id, member.id), {"answer": answer, "attempts": 0}, ex=ttl)
 
         sent = await bot.send_message(
             chat_id,
@@ -135,13 +136,14 @@ async def start_captcha(bot: Bot, chat_id: int, chat_settings: dict, members: li
             parse_mode="HTML",
             reply_markup=_keyboard(member.id, _build_options(answer)),
         )
-        await redis.set(_msg_key(chat_id, member.id), sent.message_id, ex=timeout + 60)
+        await redis.set(_msg_key(chat_id, member.id), sent.message_id, ex=ttl)
 
         run_at = datetime.now(timezone.utc) + timedelta(seconds=timeout)
         schedule_once(
-            _captcha_timeout, run_at=run_at,
+            captcha_timeout, run_at=run_at,
             chat_id=chat_id, user_id=member.id,
             kick=bool(cfg.get("kick_on_fail", True)),
+            bot_id=bot.id,
             job_id=_job_id(chat_id, member.id),
         )
         started.append(member.id)
@@ -199,12 +201,15 @@ async def check_captcha_answer(callback: CallbackQuery) -> None:
     await callback.answer(f"Неверно. Осталось попыток: {MAX_ATTEMPTS - attempts}", show_alert=True)
 
 
-async def _captcha_timeout(chat_id: int, user_id: int, kick: bool = True) -> None:
-    if _bot_ref is None:
+async def captcha_timeout(chat_id: int, user_id: int, kick: bool = True, bot_id: int | None = None) -> None:
+    """Функция задачи. Хранится в Redis по ссылке "модуль:имя" — не переименовывайте."""
+    bot = get_bot(bot_id)
+    if bot is None:
+        logger.warning("Таймаут капчи в чате %s: бот %s не запущен, пропускаю", chat_id, bot_id)
         return
     state = await get_json(_state_key(chat_id, user_id))
     if state is None:
         return  # уже прошёл капчу
-    await _cleanup(_bot_ref, chat_id, user_id)
+    await _cleanup(bot, chat_id, user_id)
     if kick:
-        await apply_sanction(_bot_ref, chat_id, user_id, "kick", "Капча не пройдена вовремя", 0)
+        await apply_sanction(bot, chat_id, user_id, "kick", "Капча не пройдена вовремя", 0)

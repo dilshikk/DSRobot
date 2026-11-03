@@ -64,10 +64,16 @@
   "wordmode_set": "✅ Banned word matching: {label}.",
   "banned_word_reason": "Banned word",
 
-  "link_action_usage": "Usage: /linkaction delete | warn | mute | ban | off",
+  "link_action_usage": "Usage: /linkaction delete | warn | ban | off | mute [minutes, default 60]",
   "link_action_set": "✅ Action on links: {action}",
   "allowlink_usage": "Usage: /allowlink DOMAIN",
   "allowlink_added": "✅ Domain «{domain}» added to the whitelist.",
+  "denylink_usage": "Usage: /denylink DOMAIN",
+  "denylink_removed": "✅ Domain «{domain}» removed from the whitelist.",
+  "denylink_missing": "Domain «{domain}» is not in the whitelist.",
+  "linkadmins_usage": "Usage: /linkadmins on|off",
+  "linkadmins_on": "✅ Admins may post links.",
+  "linkadmins_off": "✅ Admin links are checked like everyone else's.",
   "link_reason": "Forbidden link",
 
   "maxlen_usage": "Usage: /setmaxlen CHARACTERS (0 = disable)",

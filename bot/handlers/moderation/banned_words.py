@@ -163,6 +163,8 @@ async def check_banned_words(message: Message, chat_settings: dict, chat_user_ro
     if action in SANCTION_ACTIONS:
         # Проверки из moderation_pipeline не получают handler data, язык берём из кэша.
         lang = await get_chat_lang(message.chat.id)
+        # Мут — на срок, а не навсегда (issue #41).
+        duration = int(cfg.get("mute_minutes", 60)) if action == "mute" else None
         await apply_sanction(message.bot, message.chat.id, message.from_user.id, action,
-                             t(lang, "banned_word_reason"), 0)
+                             t(lang, "banned_word_reason"), 0, duration, lang=lang)
     return True

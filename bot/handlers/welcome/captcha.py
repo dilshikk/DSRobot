@@ -26,7 +26,7 @@ from datetime import datetime, timedelta, timezone
 
 from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramAPIError, TelegramBadRequest
-from aiogram.filters import Command
+from aiogram.filters import Command, CommandObject
 from aiogram.types import (
     CallbackQuery,
     ChatPermissions,
@@ -55,6 +55,9 @@ RESTRICTED = ChatPermissions(can_send_messages=False)
 CALLBACK_PREFIX = "cap"
 OPTIONS_COUNT = 4
 MAX_ATTEMPTS = 3
+DEFAULT_TIMEOUT_SEC = 120
+MIN_TIMEOUT_SEC = 30
+MAX_TIMEOUT_SEC = 3600
 # Состояние капчи живёт заметно дольше таймаута: если бот был выключен, задача таймаута
 # выполнится после старта и должна ещё увидеть состояние. Иначе она решит, что капча
 # пройдена, и участник останется ограниченным навсегда (issue #10).
@@ -92,6 +95,13 @@ async def _lift_captcha(bot: Bot, chat_id: int, user_id: int, state: dict) -> No
         )
         return
     await bot.restrict_chat_member(chat_id, user_id, await chat_default_permissions(bot, chat_id))
+
+
+async def _lift_safely(bot: Bot, chat_id: int, user_id: int, state: dict) -> None:
+    try:
+        await _lift_captcha(bot, chat_id, user_id, state)
+    except TelegramAPIError as exc:
+        logger.warning("Cannot lift captcha restriction for %s in chat %s: %s", user_id, chat_id, exc)
 
 
 def _state_key(chat_id: int, user_id: int) -> str:
@@ -148,7 +158,8 @@ async def start_captcha(
     cfg = chat_settings.get("captcha", {})
     if cfg.get("mode", "math") == "off":
         return []
-    timeout = int(cfg.get("timeout_sec", 120))
+    timeout = int(cfg.get("timeout_sec", DEFAULT_TIMEOUT_SEC))
+    kick = bool(cfg.get("kick_on_fail", True))
     started: list[int] = []
 
     for member in members:
@@ -170,24 +181,32 @@ async def start_captcha(
         a, b = random.randint(1, 9), random.randint(1, 9)
         answer = a + b
         ttl = timeout + STATE_GRACE_SEC
-        state = {"answer": answer, "attempts": 0}
+        state = {"answer": answer, "attempts": 0, "kick": kick}
         if previous:
             state["restore"] = previous
         await set_json(_state_key(chat_id, member.id), state, ex=ttl)
 
-        sent = await bot.send_message(
-            chat_id,
-            t(lang, "captcha_prompt", mention=member.mention_html(), question=f"{a} + {b} = ?", timeout=timeout),
-            parse_mode="HTML",
-            reply_markup=_keyboard(member.id, _build_options(answer)),
-        )
+        try:
+            sent = await bot.send_message(
+                chat_id,
+                t(lang, "captcha_prompt", mention=member.mention_html(), question=f"{a} + {b} = ?", timeout=timeout),
+                parse_mode="HTML",
+                reply_markup=_keyboard(member.id, _build_options(answer)),
+            )
+        except TelegramAPIError as exc:
+            # Без сообщения капчу не пройти: откатываем ограничение, иначе участник
+            # остался бы без права писать навсегда (issue #39).
+            logger.warning("Captcha message failed for %s in chat %s: %s", member.id, chat_id, exc)
+            await redis.delete(_state_key(chat_id, member.id))
+            await _lift_safely(bot, chat_id, member.id, state)
+            continue
         await redis.set(_msg_key(chat_id, member.id), sent.message_id, ex=ttl)
 
         run_at = datetime.now(timezone.utc) + timedelta(seconds=timeout)
         schedule_once(
             captcha_timeout, run_at=run_at,
             chat_id=chat_id, user_id=member.id,
-            kick=bool(cfg.get("kick_on_fail", True)),
+            kick=kick,
             bot_id=bot.id,
             job_id=_job_id(chat_id, member.id),
         )
@@ -218,6 +237,8 @@ async def check_captcha_answer(callback: CallbackQuery, lang: str = "ru") -> Non
         return await callback.answer(t(lang, "captcha_expired"), show_alert=True)
 
     bot = callback.bot
+    if int(state.get("attempts", 0)) >= MAX_ATTEMPTS:
+        return await callback.answer(t(lang, "captcha_no_attempts"), show_alert=True)
     if value == state["answer"]:
         try:
             await _lift_captcha(bot, chat_id, target_id, state)
@@ -237,7 +258,7 @@ async def check_captcha_answer(callback: CallbackQuery, lang: str = "ru") -> Non
         return
 
     attempts = int(state.get("attempts", 0)) + 1
-    if attempts >= MAX_ATTEMPTS:
+    if attempts >= MAX_ATTEMPTS and state.get("kick", True):
         await _cleanup(bot, chat_id, target_id)
         await callback.answer(t(lang, "captcha_no_attempts"), show_alert=True)
         await apply_sanction(bot, chat_id, target_id, "kick", t(lang, "captcha_failed_reason"), 0, lang=lang)
@@ -245,6 +266,9 @@ async def check_captcha_answer(callback: CallbackQuery, lang: str = "ru") -> Non
 
     ttl = await redis.ttl(key)
     await set_json(key, {**state, "attempts": attempts}, ex=ttl if ttl and ttl > 0 else 60)
+    if attempts >= MAX_ATTEMPTS:
+        # kick_on_fail выключен: участник ждёт таймаута, после него ограничение снимается.
+        return await callback.answer(t(lang, "captcha_no_attempts"), show_alert=True)
     await callback.answer(t(lang, "captcha_wrong", left=MAX_ATTEMPTS - attempts), show_alert=True)
 
 
@@ -261,3 +285,28 @@ async def captcha_timeout(chat_id: int, user_id: int, kick: bool = True, bot_id:
     if kick:
         lang = await get_chat_lang(chat_id)
         await apply_sanction(bot, chat_id, user_id, "kick", t(lang, "captcha_timeout_reason"), 0, lang=lang)
+    else:
+        # Без кика ограничение капчи снимается, иначе участник остался бы немым навсегда (issue #39).
+        await _lift_safely(bot, chat_id, user_id, state)
+
+
+@router.message(Command("captchatimeout"), HasRole("admin"))
+async def set_captcha_timeout(message: Message, command: CommandObject, lang: str = "ru") -> None:
+    arg = (command.args or "").strip()
+    if not arg.isdigit() or not MIN_TIMEOUT_SEC <= int(arg) <= MAX_TIMEOUT_SEC:
+        await message.answer(t(lang, "captcha_timeout_usage", min=MIN_TIMEOUT_SEC, max=MAX_TIMEOUT_SEC))
+        return
+    async with SessionFactory() as session:
+        await update_settings(session, message.chat.id, "captcha", {"timeout_sec": int(arg)})
+    await message.answer(t(lang, "captcha_timeout_set", seconds=int(arg)))
+
+
+@router.message(Command("captchakick"), HasRole("admin"))
+async def set_captcha_kick(message: Message, command: CommandObject, lang: str = "ru") -> None:
+    arg = (command.args or "").strip().lower()
+    if arg not in ("on", "off"):
+        await message.answer(t(lang, "captcha_kick_usage"))
+        return
+    async with SessionFactory() as session:
+        await update_settings(session, message.chat.id, "captcha", {"kick_on_fail": arg == "on"})
+    await message.answer(t(lang, "captcha_kick_on" if arg == "on" else "captcha_kick_off"))

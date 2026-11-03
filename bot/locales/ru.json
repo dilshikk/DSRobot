@@ -30,6 +30,11 @@
   "captcha_wrong": "Неверно. Осталось попыток: {left}",
   "captcha_failed_reason": "Капча не пройдена",
   "captcha_timeout_reason": "Капча не пройдена вовремя",
+  "captcha_timeout_usage": "Использование: /captchatimeout СЕКУНДЫ ({min}–{max})",
+  "captcha_timeout_set": "✅ Время на капчу: {seconds} сек.",
+  "captcha_kick_usage": "Использование: /captchakick on|off",
+  "captcha_kick_on": "✅ Не прошедших капчу бот будет исключать.",
+  "captcha_kick_off": "✅ Не прошедших капчу бот не исключает: по таймауту ограничение снимается.",
 
   "flood_usage": "Использование: /setflood СООБЩЕНИЙ СЕКУНД [mute|kick|ban] [МИНУТ_МУТА]\nНапример: /setflood 7 8 mute 30",
   "flood_invalid_limits": "Сообщений должно быть не меньше 1, секунд — от 1 до {max_seconds}.",

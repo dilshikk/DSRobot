@@ -236,12 +236,20 @@ class GroupStat(Base):
 
 
 class BotClone(Base):
-    """Список токенов клонов бота, запущенных под одной кодовой базой."""
+    """
+    Клоны бота, работающие в том же процессе (issue #6).
+
+    Токен хранится только зашифрованным (`token_encrypted`, см. services/clone_crypto.py).
+    `token_hash` — SHA-256 отпечаток для поиска дублей: шифротекст Fernet каждый раз разный.
+    Миграция со старой колонки `token` (открытый текст) — в database/engine.py.
+    """
     __tablename__ = "bot_clones"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    owner_user_id: Mapped[int] = mapped_column(BigInteger)
-    token: Mapped[str] = mapped_column(String(128), unique=True)
+    owner_user_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    bot_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     bot_username: Mapped[str] = mapped_column(String(64), default="")
+    token_encrypted: Mapped[str] = mapped_column(Text)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

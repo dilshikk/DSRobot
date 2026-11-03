@@ -3,7 +3,24 @@ on:
   push:
     branches: [main]
   pull_request:
+
+# Если запушили новый коммит, старая проверка того же PR отменяется
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install ruff==0.8.4
+      # Только настоящие ошибки (синтаксис, неизвестные имена), без придирок к стилю
+      - run: ruff check --select E9,F63,F7,F82 bot tests
+
   tests:
     runs-on: ubuntu-latest
     steps:
@@ -19,3 +36,15 @@ jobs:
       - run: python -m compileall -q bot tests
       # Redis и PostgreSQL не нужны: conftest.py подменяет их в памяти (#48)
       - run: pytest -q
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

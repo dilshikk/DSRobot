@@ -4,15 +4,15 @@
 По умолчанию используется long polling — самый простой вариант для локального
 запуска/разработки. Для продакшна замените start_polling на set_webhook + aiohttp
 web-сервер (см. README.md, раздел "Переход на Webhook").
+
+Клоны (issue #6) работают в этом же процессе: один Dispatcher опрашивает несколько ботов.
 """
 from __future__ import annotations
 
 import asyncio
 import logging
 
-from aiogram import Bot, Dispatcher
-from aiogram.client.default import DefaultBotProperties
-from aiogram.enums import ParseMode
+from aiogram import Dispatcher
 
 from bot.config import settings
 from bot.database import init_models
@@ -23,6 +23,7 @@ from bot.middlewares.antiflood import AntiFloodMiddleware
 from bot.middlewares.chat_context import ChatContextMiddleware
 from bot.middlewares.moderation_pipeline import ModerationPipelineMiddleware
 from bot.middlewares.throttling import ThrottlingMiddleware
+from bot.services.clone_runner import create_bot, load_clone_bots
 from bot.services.scheduler import scheduler, start as start_scheduler
 
 logging.basicConfig(level=settings.log_level, format="%(asctime)s | %(levelname)s | %(name)s | %(message)s")
@@ -51,7 +52,7 @@ def setup_middlewares(dp: Dispatcher) -> None:
 
 
 async def main() -> None:
-    bot = Bot(token=settings.bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+    bot = create_bot(settings.bot_token)
     dp = Dispatcher()
 
     setup_middlewares(dp)
@@ -64,18 +65,23 @@ async def main() -> None:
     recurring_handler.bind_bot(bot)
     start_scheduler()
 
+    clone_bots = await load_clone_bots(main_bot_id=bot.id)
+    all_bots = [bot, *clone_bots]
+
     # По умолчанию aiogram подписывается только на типы апдейтов, для которых есть
     # хендлеры. Для edited_message хендлеров нет — работает только middleware,
     # поэтому тип нужно запросить явно.
     allowed_updates = sorted(set(dp.resolve_used_update_types()) | {"edited_message"})
 
-    logger.info("Бот запущен, начинаю polling...")
+    logger.info("Бот запущен (клонов: %d), начинаю polling...", len(clone_bots))
     try:
-        await bot.delete_webhook(drop_pending_updates=True)
-        await dp.start_polling(bot, allowed_updates=allowed_updates)
+        for b in all_bots:
+            await b.delete_webhook(drop_pending_updates=True)
+        await dp.start_polling(*all_bots, allowed_updates=allowed_updates)
     finally:
         scheduler.shutdown(wait=False)
-        await bot.session.close()
+        for b in all_bots:
+            await b.session.close()
 
 
 if __name__ == "__main__":

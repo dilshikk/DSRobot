@@ -11,7 +11,7 @@ from bot.database import SessionFactory
 from bot.filters.roles import HasRole
 from bot.services.settings_service import update_settings
 from bot.utils.permissions import is_privileged
-from bot.utils.telegram import delete_message_safely
+from bot.utils.telegram import delete_message_safely, message_text
 
 router = Router(name="alphabets")
 
@@ -36,9 +36,10 @@ async def set_alphabet(message: Message, command: CommandObject) -> None:
 
 async def check_alphabet(message: Message, chat_settings: dict, chat_user_role: str) -> bool:
     cfg = chat_settings.get("alphabets", {})
-    if not message.text or not cfg.get("enabled") or is_privileged(chat_user_role):
+    text = message_text(message)
+    if not text or not cfg.get("enabled") or is_privileged(chat_user_role):
         return False
-    letters = [c for c in message.text if unicodedata.category(c).startswith("L")]
+    letters = [c for c in text if unicodedata.category(c).startswith("L")]
     if not letters:
         return False
     allowed_patterns = [SCRIPT_PATTERNS[a] for a in cfg.get("allowed", []) if a in SCRIPT_PATTERNS]

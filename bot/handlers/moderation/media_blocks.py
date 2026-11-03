@@ -20,6 +20,11 @@ MEDIA_MAP = {
     "gif": lambda m: bool(m.animation),
     "voice": lambda m: bool(m.voice),
     "document": lambda m: bool(m.document),
+    "video_note": lambda m: bool(m.video_note),
+    "audio": lambda m: bool(m.audio),
+    "poll": lambda m: bool(m.poll),
+    "contact": lambda m: bool(m.contact),
+    "location": lambda m: bool(m.location or m.venue),
 }
 
 

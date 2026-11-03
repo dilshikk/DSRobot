@@ -12,7 +12,7 @@ import logging
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError, TelegramBadRequest, TelegramForbiddenError
-from aiogram.types import Message
+from aiogram.types import Message, MessageEntity
 
 from bot.services.cache import redis
 from bot.utils.i18n import t
@@ -91,3 +91,12 @@ async def delete_by_id_safely(bot: Bot, chat_id: int, message_id: int, notify: b
     except TelegramAPIError as exc:
         await _handle_delete_error(bot, chat_id, message_id, exc, notify)
         return False
+
+
+def message_text(message: Message) -> str:
+    """Текст сообщения или подпись медиа: фильтры должны видеть и то, и другое (issue #40)."""
+    return message.text or message.caption or ""
+
+
+def message_entities(message: Message) -> list[MessageEntity]:
+    return list(message.entities or message.caption_entities or [])

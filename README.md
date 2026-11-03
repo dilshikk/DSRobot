@@ -113,7 +113,6 @@ pytest
 ```
 
 PostgreSQL и Redis для тестов не нужны: `tests/conftest.py` подменяет их в памяти.
-Тесты автоматически запускаются в GitHub Actions на каждый PR (`.github/workflows/ci.yml`).
 
 ## Структура проекта
 

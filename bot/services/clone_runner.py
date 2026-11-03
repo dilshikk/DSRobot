@@ -21,13 +21,16 @@ from sqlalchemy import select
 from bot.database import SessionFactory
 from bot.database.models import BotClone
 from bot.services import clone_crypto
+from bot.utils.html_fallback import HtmlFallbackMiddleware
 
 logger = logging.getLogger(__name__)
 
 
 def create_bot(token: str) -> Bot:
     """Единые настройки для основного бота и клонов."""
-    return Bot(token=token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+    bot = Bot(token=token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+    bot.session.middleware(HtmlFallbackMiddleware())
+    return bot
 
 
 async def fetch_bot_identity(token: str) -> User | None:

@@ -2,6 +2,8 @@
 Ответы — на языке чата (issue #12)."""
 from __future__ import annotations
 
+from html import escape
+
 from aiogram import Bot, Router
 from aiogram.filters import Command, CommandObject
 from aiogram.types import Message, User
@@ -10,6 +12,7 @@ from bot.database import SessionFactory
 from bot.filters.roles import HasRole
 from bot.services.cache import redis
 from bot.services.settings_service import update_settings
+from bot.utils.html_fallback import send_html_or_escaped
 from bot.utils.i18n import t
 from bot.utils.telegram import delete_by_id_safely
 
@@ -33,11 +36,11 @@ async def welcome_off(message: Message, lang: str = "ru") -> None:
     await message.answer(t(lang, "welcome_disabled"))
 
 
-def welcome_text(cfg: dict, lang: str, mention: str) -> str:
+def welcome_text(cfg: dict, lang: str, mention: str, escape_custom: bool = False) -> str:
     """Свой текст админа, если задан, иначе стандартное приветствие на языке чата."""
     custom = cfg.get("text")
     if custom:
-        return custom.format(mention=mention)
+        return (escape(custom) if escape_custom else custom).format(mention=mention)
     return t(lang, "welcome_default", mention=mention)
 
 
@@ -55,7 +58,7 @@ async def greet_members(
             await delete_by_id_safely(bot, chat_id, int(old_id))
 
     for member in members:
-        text = welcome_text(cfg, lang, member.mention_html())
-        sent = await bot.send_message(chat_id, text, parse_mode="HTML")
+        mention = member.mention_html()
+        sent = await send_html_or_escaped(bot, chat_id, lambda esc: welcome_text(cfg, lang, mention, esc))
         if cfg.get("clean_old"):
             await redis.set(f"lastwelcome:{chat_id}", sent.message_id, ex=86400)

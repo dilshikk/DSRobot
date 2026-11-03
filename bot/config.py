@@ -15,7 +15,10 @@ def _parse_ids(raw: str) -> set[int]:
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    # env_ignore_empty: пустое значение (SUPPORT_CHAT_ID=) = значение по умолчанию, а не ошибка парсинга int.
+    model_config = SettingsConfigDict(
+        env_file=".env", env_file_encoding="utf-8", extra="ignore", env_ignore_empty=True,
+    )
 
     # Telegram
     bot_token: str

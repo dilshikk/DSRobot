@@ -29,10 +29,10 @@ def test_chat_today_uses_chat_offset(offset, expected):
 
 def test_stat_upsert_is_atomic_increment():
     # SQLAlchemy не подставляет literal_binds в ON CONFLICT ... SET, поэтому параметры
-    # остаются плейсхолдерами. Проверяем саму форму: x = coalesce(x, ?) + ?
+    # остаются плейсхолдерами вида %(coalesce_1)s. Проверяем саму форму: x = coalesce(x, ?) + ?
     sql = _sql(stats.stat_upsert(-100, "messages_count", date(2026, 1, 1)))
     assert "ON CONFLICT ON CONSTRAINT uq_chat_date DO UPDATE" in sql
-    assert re.search(r"SET messages_count = \(?coalesce\(group_stats\.messages_count, [^)]+\) \+ ", sql)
+    assert re.search(r"SET messages_count = \(?coalesce\(group_stats\.messages_count, .+?\) \+ ", sql)
 
 
 def test_stat_upsert_rejects_unknown_field():

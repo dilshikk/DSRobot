@@ -42,7 +42,7 @@ from bot.handlers.welcome.welcome import greet_members
 from bot.services.bot_registry import get_bot
 from bot.services.cache import get_json, redis, set_json
 from bot.services.chat_lang import get_chat_lang
-from bot.services.moderation_actions import apply_sanction
+from bot.services.moderation_actions import apply_sanction, chat_default_permissions
 from bot.services.scheduler import remove_job, schedule_once
 from bot.services.settings_service import get_settings, update_settings
 from bot.utils.i18n import t
@@ -52,10 +52,6 @@ router = Router(name="captcha")
 logger = logging.getLogger(__name__)
 
 RESTRICTED = ChatPermissions(can_send_messages=False)
-UNRESTRICTED = ChatPermissions(
-    can_send_messages=True, can_send_audios=True, can_send_documents=True,
-    can_send_photos=True, can_send_videos=True, can_send_other_messages=True,
-)
 CALLBACK_PREFIX = "cap"
 OPTIONS_COUNT = 4
 MAX_ATTEMPTS = 3
@@ -63,6 +59,39 @@ MAX_ATTEMPTS = 3
 # выполнится после старта и должна ещё увидеть состояние. Иначе она решит, что капча
 # пройдена, и участник останется ограниченным навсегда (issue #10).
 STATE_GRACE_SEC = 3 * 24 * 3600
+
+
+async def _previous_restriction(bot: Bot, chat_id: int, user_id: int) -> dict | None:
+    """
+    Ограничения, которые были у участника до капчи (мут, запрет медиа). Telegram хранит их
+    и после выхода из чата, поэтому замученный, перезайдя и пройдя капчу, раньше получал
+    полные права (issue #38). Возвращает {"permissions": {...}, "until": ts} или None.
+    """
+    try:
+        member = await bot.get_chat_member(chat_id, user_id)
+    except TelegramAPIError as exc:
+        logger.warning("Cannot get member %s of chat %s before captcha: %s", user_id, chat_id, exc)
+        return None
+    if member.status != "restricted":
+        return None
+    until = member.until_date
+    until_ts = int(until.timestamp()) if until else 0
+    if until_ts and until_ts <= datetime.now(timezone.utc).timestamp():
+        return None
+    permissions = {name: getattr(member, name) for name in ChatPermissions.model_fields}
+    return {"permissions": permissions, "until": until_ts}
+
+
+async def _lift_captcha(bot: Bot, chat_id: int, user_id: int, state: dict) -> None:
+    """Возвращает участнику права, которые были до капчи: прежнее ограничение или права чата."""
+    previous = state.get("restore")
+    if previous and (not previous["until"] or previous["until"] > datetime.now(timezone.utc).timestamp()):
+        until = datetime.fromtimestamp(previous["until"], timezone.utc) if previous["until"] else None
+        await bot.restrict_chat_member(
+            chat_id, user_id, ChatPermissions(**previous["permissions"]), until_date=until,
+        )
+        return
+    await bot.restrict_chat_member(chat_id, user_id, await chat_default_permissions(bot, chat_id))
 
 
 def _state_key(chat_id: int, user_id: int) -> str:
@@ -125,6 +154,7 @@ async def start_captcha(
     for member in members:
         if member.is_bot:
             continue
+        previous = await _previous_restriction(bot, chat_id, member.id)
         try:
             await bot.restrict_chat_member(chat_id, member.id, RESTRICTED)
         except TelegramBadRequest as exc:
@@ -140,7 +170,10 @@ async def start_captcha(
         a, b = random.randint(1, 9), random.randint(1, 9)
         answer = a + b
         ttl = timeout + STATE_GRACE_SEC
-        await set_json(_state_key(chat_id, member.id), {"answer": answer, "attempts": 0}, ex=ttl)
+        state = {"answer": answer, "attempts": 0}
+        if previous:
+            state["restore"] = previous
+        await set_json(_state_key(chat_id, member.id), state, ex=ttl)
 
         sent = await bot.send_message(
             chat_id,
@@ -187,7 +220,7 @@ async def check_captcha_answer(callback: CallbackQuery, lang: str = "ru") -> Non
     bot = callback.bot
     if value == state["answer"]:
         try:
-            await bot.restrict_chat_member(chat_id, target_id, UNRESTRICTED)
+            await _lift_captcha(bot, chat_id, target_id, state)
         except TelegramAPIError as exc:
             logger.warning("Cannot lift captcha restriction for %s in chat %s: %s", target_id, chat_id, exc)
             return await callback.answer(t(lang, "captcha_unrestrict_failed"), show_alert=True)

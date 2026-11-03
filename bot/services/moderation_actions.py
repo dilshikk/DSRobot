@@ -30,10 +30,24 @@ from bot.utils.i18n import t
 logger = logging.getLogger(__name__)
 
 MUTED_PERMISSIONS = ChatPermissions(can_send_messages=False)
+# Запасной вариант, если права чата по умолчанию получить не удалось. Раньше здесь не было
+# голосовых, кружков, опросов и превью ссылок, и после /unmute они оставались запрещены (issue #38).
 UNMUTED_PERMISSIONS = ChatPermissions(
     can_send_messages=True, can_send_audios=True, can_send_documents=True,
-    can_send_photos=True, can_send_videos=True, can_send_other_messages=True,
+    can_send_photos=True, can_send_videos=True, can_send_video_notes=True,
+    can_send_voice_notes=True, can_send_polls=True, can_send_other_messages=True,
+    can_add_web_page_previews=True,
 )
+
+
+async def chat_default_permissions(bot: Bot, chat_id: int) -> ChatPermissions:
+    """Права обычного участника этого чата: снятие ограничений не даёт больше, чем всем остальным."""
+    try:
+        chat = await bot.get_chat(chat_id)
+    except TelegramAPIError as exc:
+        logger.warning("Cannot get default permissions of chat %s: %s", chat_id, exc)
+        return UNMUTED_PERMISSIONS
+    return chat.permissions or UNMUTED_PERMISSIONS
 
 # Telegram ограничивает сообщение 4096 символами — не даём длинной причине сломать лог.
 MAX_REASON_LENGTH = 1000
@@ -66,7 +80,7 @@ async def _call_telegram(
         elif action == "mute":
             await bot.restrict_chat_member(chat_id, user_id, MUTED_PERMISSIONS, until_date=until)
         elif action == "unmute":
-            await bot.restrict_chat_member(chat_id, user_id, UNMUTED_PERMISSIONS)
+            await bot.restrict_chat_member(chat_id, user_id, await chat_default_permissions(bot, chat_id))
         elif action == "unban":
             await bot.unban_chat_member(chat_id, user_id, only_if_banned=True)
         # action == "warn" не требует вызова Telegram API — только счётчик в БД

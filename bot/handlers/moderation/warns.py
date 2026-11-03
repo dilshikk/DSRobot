@@ -3,7 +3,7 @@
 from aiogram import Router
 from aiogram.filters import Command, CommandObject
 from aiogram.types import Message
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from bot.database import SessionFactory
 from bot.database.models import ChatUser
@@ -15,6 +15,8 @@ from bot.utils.i18n import t
 router = Router(name="warns")
 
 LIMIT_ACTIONS = ("ban", "kick", "mute")
+DEFAULT_MUTE_MINUTES = 60
+MAX_MUTE_MINUTES = 525600  # 365 дней: больше Telegram считает мутом навсегда
 
 
 async def _get_warns(chat_id: int, user_id: int) -> int:
@@ -23,6 +25,14 @@ async def _get_warns(chat_id: int, user_id: int) -> int:
             select(ChatUser).where(ChatUser.chat_id == chat_id, ChatUser.user_id == user_id)
         )).scalar_one_or_none()
     return (cu.warns or 0) if cu else 0
+
+
+async def _reset_warns(chat_id: int, user_id: int) -> None:
+    async with SessionFactory() as session:
+        await session.execute(
+            update(ChatUser).where(ChatUser.chat_id == chat_id, ChatUser.user_id == user_id).values(warns=0)
+        )
+        await session.commit()
 
 
 @router.message(Command("warn"), HasRole("admin"))
@@ -44,7 +54,11 @@ async def cmd_warn(message: Message, command: CommandObject, chat_settings: dict
         action = cfg.get("action", "ban")
         if action not in LIMIT_ACTIONS:
             action = "ban"
-        if await run_sanction(message, target, action, t(lang, "warn_limit_reason"), lang=lang):
+        # Мут по лимиту — на срок, а не навсегда (issue #37).
+        duration = int(cfg.get("mute_minutes", DEFAULT_MUTE_MINUTES)) if action == "mute" else None
+        if await run_sanction(message, target, action, t(lang, "warn_limit_reason"), duration, lang=lang):
+            # Счётчик обнуляется, иначе каждый следующий /warn сразу повторял бы санкцию (issue #37).
+            await _reset_warns(message.chat.id, target.user_id)
             await message.answer(t(lang, "warn_limit_reached", action=action))
 
 
@@ -74,3 +88,26 @@ async def set_warn_limit(message: Message, command: CommandObject, lang: str = "
     async with SessionFactory() as session:
         await update_settings(session, message.chat.id, "warns", {"max_warns": int(command.args)})
     await message.answer(t(lang, "warn_limit_set", limit=command.args))
+
+
+@router.message(Command("setwarnaction"), HasRole("admin"))
+async def set_warn_action(message: Message, command: CommandObject, lang: str = "ru") -> None:
+    parts = (command.args or "").lower().split()
+    action = parts[0] if parts else ""
+    minutes_raw = parts[1] if len(parts) > 1 else str(DEFAULT_MUTE_MINUTES)
+    if (
+        action not in LIMIT_ACTIONS or len(parts) > 2
+        or (len(parts) == 2 and action != "mute")
+        or not minutes_raw.isdigit() or not 1 <= int(minutes_raw) <= MAX_MUTE_MINUTES
+    ):
+        await message.answer(t(lang, "warn_action_usage", max=MAX_MUTE_MINUTES))
+        return
+    values: dict = {"action": action}
+    if action == "mute":
+        values["mute_minutes"] = int(minutes_raw)
+    async with SessionFactory() as session:
+        await update_settings(session, message.chat.id, "warns", values)
+    if action == "mute":
+        await message.answer(t(lang, "warn_action_set_mute", minutes=values["mute_minutes"]))
+    else:
+        await message.answer(t(lang, "warn_action_set", action=action))

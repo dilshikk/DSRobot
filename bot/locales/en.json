@@ -125,6 +125,9 @@
   "warn_limit_reason": "Warning limit reached",
   "warn_limit_usage": "Usage: /setwarnlimit NUMBER (at least 1)",
   "warn_limit_set": "✅ Warning limit set to: {limit}",
+  "warn_action_usage": "Usage: /setwarnaction ban|kick|mute [minutes, 1–{max}, default 60]",
+  "warn_action_set": "✅ On warn limit: {action}",
+  "warn_action_set_mute": "✅ On warn limit: mute for {minutes} min.",
 
   "usage_ban": "/ban [reason]",
   "usage_unban": "/unban",

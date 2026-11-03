@@ -125,6 +125,9 @@
   "warn_limit_reason": "Достигнут лимит предупреждений",
   "warn_limit_usage": "Использование: /setwarnlimit ЧИСЛО (не меньше 1)",
   "warn_limit_set": "✅ Лимит предупреждений установлен: {limit}",
+  "warn_action_usage": "Использование: /setwarnaction ban|kick|mute [минуты, 1–{max}, по умолчанию 60]",
+  "warn_action_set": "✅ При лимите предупреждений: {action}",
+  "warn_action_set_mute": "✅ При лимите предупреждений: мут на {minutes} мин.",
 
   "usage_ban": "/ban [причина]",
   "usage_unban": "/unban",

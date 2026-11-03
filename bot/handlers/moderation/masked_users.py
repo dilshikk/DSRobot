@@ -14,7 +14,7 @@ from bot.filters.roles import HasRole
 from bot.services.settings_service import update_settings
 from bot.utils.i18n import toggle_text
 from bot.utils.permissions import is_privileged
-from bot.utils.telegram import delete_message_safely
+from bot.utils.telegram import delete_message_safely, message_entities, message_text
 
 router = Router(name="masked_users")
 
@@ -28,11 +28,14 @@ async def toggle_masked(message: Message, chat_settings: dict, lang: str = "ru")
 
 
 async def check_masked_links(message: Message, chat_settings: dict, chat_user_role: str) -> bool:
-    if not message.entities or not chat_settings.get("blocks", {}).get("masked_links") or is_privileged(chat_user_role):
+    entities = message_entities(message)
+    if not entities or not chat_settings.get("blocks", {}).get("masked_links") or is_privileged(chat_user_role):
         return False
-    for entity in message.entities:
+    # offset/length у Telegram — в UTF-16 code units.
+    text_utf16 = message_text(message).encode("utf-16-le")
+    for entity in entities:
         if entity.type == "text_link" and entity.url:
-            visible = (message.text or "")[entity.offset: entity.offset + entity.length]
+            visible = text_utf16[entity.offset * 2: (entity.offset + entity.length) * 2].decode("utf-16-le", "ignore")
             real_domain = urlparse(entity.url).netloc
             if real_domain and real_domain.lower() not in visible.lower():
                 await delete_message_safely(message)

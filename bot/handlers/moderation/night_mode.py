@@ -48,7 +48,8 @@ async def set_night_mode(message: Message, command: CommandObject, lang: str = "
 
 async def check_night_mode(message: Message, chat_settings: dict, chat_user_role: str) -> bool:
     cfg = chat_settings.get("night_mode", {})
-    if not message.text or not cfg.get("enabled") or is_privileged(chat_user_role):
+    # Любое сообщение, не только текст: ночью нельзя и фото, и стикеры, и голосовые (issue #40).
+    if not cfg.get("enabled") or is_privileged(chat_user_role):
         return False
 
     async with SessionFactory() as session:

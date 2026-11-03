@@ -13,7 +13,7 @@ from bot.services.moderation_actions import apply_sanction
 from bot.services.settings_service import update_settings
 from bot.utils.i18n import t
 from bot.utils.permissions import is_privileged
-from bot.utils.telegram import delete_message_safely
+from bot.utils.telegram import delete_message_safely, message_text
 
 router = Router(name="link_settings")
 
@@ -49,11 +49,12 @@ async def whitelist_domain(message: Message, command: CommandObject, chat_settin
 async def check_links(message: Message, chat_settings: dict, chat_user_role: str) -> bool:
     cfg = chat_settings.get("link_settings", {})
     action = cfg.get("action", "delete")
-    if not message.text or action == "off":
+    text = message_text(message)
+    if not text or action == "off":
         return False
     if is_privileged(chat_user_role) and cfg.get("allow_admins", True):
         return False
-    match = URL_RE.search(message.text)
+    match = URL_RE.search(text)
     if not match:
         return False
     if any(domain in match.group(0).lower() for domain in cfg.get("whitelist", [])):

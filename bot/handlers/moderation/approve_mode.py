@@ -46,8 +46,6 @@ async def toggle_approve_mode(message: Message, chat_settings: dict, lang: str =
 async def check_unapproved(message: Message, chat_settings: dict, chat_user_role: str) -> bool:
     if not chat_settings.get("approve_mode", {}).get("enabled") or is_privileged(chat_user_role):
         return False
-    if not (message.text or message.photo or message.video or message.sticker):
-        return False
     async with SessionFactory() as session:
         cu = (await session.execute(
             select(ChatUser).where(ChatUser.chat_id == message.chat.id, ChatUser.user_id == message.from_user.id)

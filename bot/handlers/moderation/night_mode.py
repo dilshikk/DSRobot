@@ -10,6 +10,7 @@ from bot.database import SessionFactory
 from bot.filters.roles import HasRole
 from bot.services.settings_service import get_or_create_chat, update_settings
 from bot.utils.permissions import is_privileged
+from bot.utils.telegram import delete_message_safely
 
 router = Router(name="night_mode")
 
@@ -48,8 +49,5 @@ async def check_night_mode(message: Message, chat_settings: dict, chat_user_role
     if not in_night:
         return False
 
-    try:
-        await message.delete()
-    except Exception:
-        pass
+    await delete_message_safely(message)
     return True

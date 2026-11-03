@@ -9,6 +9,7 @@ from bot.database import SessionFactory
 from bot.filters.roles import HasRole
 from bot.services.cache import redis
 from bot.services.settings_service import update_settings
+from bot.utils.telegram import delete_by_id_safely
 
 router = Router(name="welcome")
 
@@ -39,10 +40,7 @@ async def greet_members(bot: Bot, chat_id: int, chat_settings: dict, members: li
     if cfg.get("clean_old"):
         old_id = await redis.get(f"lastwelcome:{chat_id}")
         if old_id:
-            try:
-                await bot.delete_message(chat_id, int(old_id))
-            except Exception:
-                pass
+            await delete_by_id_safely(bot, chat_id, int(old_id))
 
     for member in members:
         text = cfg.get("text", "Добро пожаловать, {mention}!").format(mention=member.mention_html())

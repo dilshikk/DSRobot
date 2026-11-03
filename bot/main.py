@@ -30,6 +30,20 @@ logging.basicConfig(level=settings.log_level, format="%(asctime)s | %(levelname)
 logger = logging.getLogger("bot.main")
 
 
+def setup_sentry() -> None:
+    """
+    Подключает Sentry, если задан SENTRY_DSN (issue #9). Интеграция с logging
+    включена по умолчанию: всё, что пишется через logger.error/logger.exception,
+    уходит в Sentry как событие, а warning-и сохраняются как breadcrumbs.
+    """
+    if not settings.sentry_dsn:
+        return
+    import sentry_sdk
+
+    sentry_sdk.init(dsn=settings.sentry_dsn, traces_sample_rate=0.0, send_default_pii=False)
+    logger.info("Sentry подключён")
+
+
 def setup_middlewares(dp: Dispatcher) -> None:
     """
     Middleware Layer. Порядок важен: сначала контекст чата (роль, настройки), затем
@@ -52,6 +66,7 @@ def setup_middlewares(dp: Dispatcher) -> None:
 
 
 async def main() -> None:
+    setup_sentry()
     bot = create_bot(settings.bot_token)
     dp = Dispatcher()
 

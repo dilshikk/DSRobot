@@ -7,6 +7,7 @@ from bot.database import SessionFactory
 from bot.filters.roles import HasRole
 from bot.services.settings_service import update_settings
 from bot.utils.permissions import is_privileged
+from bot.utils.telegram import delete_message_safely
 
 router = Router(name="media_blocks")
 
@@ -37,9 +38,6 @@ async def check_media_block(message: Message, chat_settings: dict, chat_user_rol
     blocks = chat_settings.get("media_blocks", {})
     for kind, check in MEDIA_MAP.items():
         if blocks.get(kind) and check(message):
-            try:
-                await message.delete()
-            except Exception:
-                pass
+            await delete_message_safely(message)
             return True
     return False

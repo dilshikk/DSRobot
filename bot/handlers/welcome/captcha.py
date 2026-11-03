@@ -22,6 +22,7 @@ import random
 from datetime import datetime, timedelta, timezone
 
 from aiogram import Bot, F, Router
+from aiogram.exceptions import TelegramAPIError, TelegramBadRequest
 from aiogram.filters import Command
 from aiogram.types import (
     CallbackQuery,
@@ -40,6 +41,7 @@ from bot.services.cache import get_json, redis, set_json
 from bot.services.moderation_actions import apply_sanction
 from bot.services.scheduler import remove_job, schedule_once
 from bot.services.settings_service import get_settings, update_settings
+from bot.utils.telegram import delete_by_id_safely, is_rights_error, notify_missing_rights
 
 router = Router(name="captcha")
 logger = logging.getLogger(__name__)
@@ -93,10 +95,7 @@ async def _cleanup(bot: Bot, chat_id: int, user_id: int) -> None:
     msg_id = await redis.get(_msg_key(chat_id, user_id))
     await redis.delete(_state_key(chat_id, user_id), _msg_key(chat_id, user_id))
     if msg_id:
-        try:
-            await bot.delete_message(chat_id, int(msg_id))
-        except Exception:
-            pass
+        await delete_by_id_safely(bot, chat_id, int(msg_id))
     remove_job(_job_id(chat_id, user_id))
 
 
@@ -121,8 +120,15 @@ async def start_captcha(bot: Bot, chat_id: int, chat_settings: dict, members: li
             continue
         try:
             await bot.restrict_chat_member(chat_id, member.id, RESTRICTED)
-        except Exception:
-            continue  # бот без прав ограничения — пропускаем капчу
+        except TelegramBadRequest as exc:
+            # Без прав ограничения капча бессмысленна: участник и так может писать.
+            logger.warning("Captcha skipped for %s in chat %s: %s", member.id, chat_id, exc)
+            if is_rights_error(exc):
+                await notify_missing_rights(bot, chat_id, "включать капчу для новых участников")
+            continue
+        except TelegramAPIError as exc:
+            logger.warning("Captcha skipped for %s in chat %s: %s", member.id, chat_id, exc)
+            continue
 
         a, b = random.randint(1, 9), random.randint(1, 9)
         answer = a + b
@@ -176,7 +182,8 @@ async def check_captcha_answer(callback: CallbackQuery) -> None:
     if value == state["answer"]:
         try:
             await bot.restrict_chat_member(chat_id, target_id, UNRESTRICTED)
-        except Exception:
+        except TelegramAPIError as exc:
+            logger.warning("Cannot lift captcha restriction for %s in chat %s: %s", target_id, chat_id, exc)
             return await callback.answer("Не удалось снять ограничения, обратитесь к админу.", show_alert=True)
         await _cleanup(bot, chat_id, target_id)
         await callback.answer("Проверка пройдена, добро пожаловать!")
@@ -186,7 +193,8 @@ async def check_captcha_answer(callback: CallbackQuery) -> None:
         try:
             await greet_members(bot, chat_id, chat_settings, [callback.from_user])
         except Exception:
-            pass
+            # Ошибка приветствия не должна отменять успешное прохождение капчи.
+            logger.exception("Welcome after captcha failed for %s in chat %s", target_id, chat_id)
         return
 
     attempts = int(state.get("attempts", 0)) + 1

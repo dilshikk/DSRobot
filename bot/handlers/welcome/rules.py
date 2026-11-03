@@ -1,5 +1,5 @@
 """Rules. Ответы — на языке чата (issue #12)."""
-from aiogram import Router
+from aiogram import F, Router
 from aiogram.filters import Command, CommandObject
 from aiogram.types import Message
 
@@ -9,6 +9,7 @@ from bot.services.settings_service import update_settings
 from bot.utils.i18n import t
 
 router = Router(name="rules")
+router.message.filter(F.chat.type.in_({"group", "supergroup"}))  # в личке нет chat_settings (issue #45)
 
 
 @router.message(Command("setrules"), HasRole("admin"))

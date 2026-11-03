@@ -22,12 +22,16 @@ async def price(message: Message, command: CommandObject) -> None:
         try:
             async with http.get(settings.crypto_api_url, params={"ids": coin_id, "vs_currencies": "usd"},
                                  timeout=aiohttp.ClientTimeout(total=10)) as resp:
-                data = await resp.json()
+                data = await resp.json() if resp.status == 200 else None
         except Exception:
             await message.answer("\u26a0\ufe0f Не удалось получить курс (сервис недоступен).")
             return
 
-    if coin_id not in data:
+    if not isinstance(data, dict):  # 429 / 5xx от CoinGecko
+        await message.answer("\u26a0\ufe0f Не удалось получить курс (сервис недоступен).")
+        return
+    usd = (data.get(coin_id) or {}).get("usd")
+    if usd is None:
         await message.answer("Монета не найдена. Пример: /price btc")
         return
-    await message.answer(f"\U0001f4b1 {coin_id.upper()}: ${data[coin_id]['usd']:,}")
+    await message.answer(f"\U0001f4b1 {coin_id.upper()}: ${usd:,}")

@@ -31,6 +31,12 @@ async def add_role(message: Message, command: CommandObject, lang: str = "ru") -
     name, perms_raw = command.args.split(maxsplit=1)
     perms = {p.strip(): True for p in perms_raw.split(",") if p.strip() in CUSTOM_ROLE_PERMISSIONS}
     async with SessionFactory() as session:
+        exists = (await session.execute(
+            select(CustomRole.id).where(CustomRole.chat_id == message.chat.id, CustomRole.name == name)
+        )).first()
+        if exists:
+            await message.answer(t(lang, "role_exists", name=escape(name)))
+            return
         session.add(CustomRole(chat_id=message.chat.id, name=name, permissions=perms))
         await session.commit()
     await message.answer(role_created_text(lang, name, list(perms)))
@@ -48,7 +54,8 @@ async def set_role(message: Message, command: CommandObject, lang: str = "ru") -
     async with SessionFactory() as session:
         role = (await session.execute(
             select(CustomRole).where(CustomRole.chat_id == message.chat.id, CustomRole.name == role_name)
-        )).scalar_one_or_none()
+            .order_by(CustomRole.id)
+        )).scalars().first()  # дубли имён могли остаться с прошлых версий
         if not role:
             await message.answer(t(lang, "role_not_found"))
             return

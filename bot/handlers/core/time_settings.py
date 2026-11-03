@@ -7,6 +7,7 @@ from bot.database import SessionFactory
 from bot.filters.roles import HasRole
 from bot.services.recurring import reschedule_chat
 from bot.services.settings_service import get_or_create_chat
+from bot.utils.parsing import parse_int
 
 router = Router(name="time_settings")
 
@@ -15,11 +16,10 @@ MIN_OFFSET, MAX_OFFSET = -12, 14
 
 @router.message(Command("setutc"), HasRole("admin"))
 async def set_utc(message: Message, command: CommandObject) -> None:
-    raw = (command.args or "").strip()
-    if not raw.lstrip("+-").isdigit() or not MIN_OFFSET <= int(raw) <= MAX_OFFSET:
+    offset = parse_int(command.args, MIN_OFFSET, MAX_OFFSET)
+    if offset is None:
         await message.answer("Использование: /setutc <-12..+14>")
         return
-    offset = int(raw)
     async with SessionFactory() as session:
         chat = await get_or_create_chat(session, message.chat.id, message.chat.title or "")
         chat.utc_offset = offset

@@ -12,7 +12,7 @@ router = Router(name="roles_permissions")
 
 @router.message(Command("promote"), HasRole("owner"))
 async def promote(message: Message, lang: str = "ru") -> None:
-    if not message.reply_to_message or not message.reply_to_message.from_user:
+    if not message.reply_to_message or not message.reply_to_message.from_user or message.reply_to_message.sender_chat:
         await message.answer(t(lang, "promote_usage"))
         return
     target = message.reply_to_message.from_user
@@ -26,7 +26,7 @@ async def promote(message: Message, lang: str = "ru") -> None:
 
 @router.message(Command("demote"), HasRole("owner"))
 async def demote(message: Message, lang: str = "ru") -> None:
-    if not message.reply_to_message or not message.reply_to_message.from_user:
+    if not message.reply_to_message or not message.reply_to_message.from_user or message.reply_to_message.sender_chat:
         await message.answer(t(lang, "demote_usage"))
         return
     target = message.reply_to_message.from_user

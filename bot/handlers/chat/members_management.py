@@ -8,8 +8,11 @@ from sqlalchemy import select
 from bot.database import SessionFactory
 from bot.database.models import ChatUser, User
 from bot.filters.roles import HasRole
+from bot.utils.parsing import parse_int
 
 router = Router(name="members_management")
+
+MAX_INACTIVE_DAYS = 3650
 
 
 @router.message(Command("members"), HasRole("admin"))
@@ -21,7 +24,10 @@ async def members_count(message) -> None:
 @router.message(Command("inactive"), HasRole("admin"))
 async def list_inactive(message, command: CommandObject) -> None:
     """Показывает пользователей, не писавших дольше N дней (по умолчанию 30)."""
-    days = int(command.args) if command.args and command.args.isdigit() else 30
+    days = parse_int(command.args, 1, MAX_INACTIVE_DAYS) if command.args else 30
+    if days is None:
+        await message.answer(f"Использование: /inactive [дней, 1-{MAX_INACTIVE_DAYS}]")
+        return
     threshold = datetime.now(timezone.utc) - timedelta(days=days)
 
     async with SessionFactory() as session:

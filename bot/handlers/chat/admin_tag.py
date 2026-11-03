@@ -1,5 +1,5 @@
 """@Admin — вызов админов с cooldown, чтобы не превращалось в спам."""
-from aiogram import Router
+from aiogram import F, Router
 from aiogram.filters import Command, CommandObject
 from aiogram.types import ChatMemberAdministrator, ChatMemberOwner
 
@@ -9,6 +9,7 @@ from bot.services.cache import redis
 from bot.services.settings_service import update_settings
 
 router = Router(name="admin_tag")
+router.message.filter(F.chat.type.in_({"group", "supergroup"}))  # в личке нет chat_settings (issue #45)
 
 MAX_COOLDOWN_SEC = 86400
 

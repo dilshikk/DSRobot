@@ -6,6 +6,7 @@ from sqlalchemy import select
 
 from bot.database import SessionFactory
 from bot.database.models import PersonalCommand
+from bot.handlers.chat.personal_commands import save_trigger
 from bot.filters.roles import HasRole
 
 router = Router(name="magic_stickers_gifs")
@@ -27,10 +28,9 @@ async def add_magic(message: Message, command: CommandObject) -> None:
         return
 
     async with SessionFactory() as session:
-        session.add(PersonalCommand(chat_id=message.chat.id, trigger=command.args.lower(),
-                                     response_type=rtype, response_content=content, created_by=message.from_user.id))
-        await session.commit()
-    await message.answer(f"\u2705 Магический ответ на «{command.args}» сохранён.")
+        replaced = await save_trigger(session, message.chat.id, command.args.lower(), rtype, content,
+                                      message.from_user.id)
+    await message.answer(f"\u2705 Магический ответ на «{command.args}» {'обновлён' if replaced else 'сохранён'}.")
 
 
 @router.message(F.text, ~F.text.startswith("/"))

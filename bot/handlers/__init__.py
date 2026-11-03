@@ -9,6 +9,7 @@
 from aiogram import Dispatcher
 
 from bot.handlers.core import clones, lang_settings, member_updates, start_help, time_settings
+from bot.handlers.core.errors import register_error_handlers
 from bot.handlers.moderation import (
     anonymous_admins, antiflood, antispam, anti_nsfw, approve_mode, banned_words,
     blocks, channel_moderation, custom_roles, link_settings, masked_users,
@@ -51,3 +52,4 @@ ALL_ROUTERS = [
 def register_all_routers(dp: Dispatcher) -> None:
     for router in ALL_ROUTERS:
         dp.include_router(router)
+    register_error_handlers(dp)

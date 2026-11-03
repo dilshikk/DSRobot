@@ -8,7 +8,7 @@ from aiogram.types import Message
 
 from bot.database import SessionFactory
 from bot.filters.roles import HasRole
-from bot.services.settings_service import get_or_create_chat, update_settings
+from bot.services.settings_service import update_settings
 from bot.utils.i18n import t
 from bot.utils.permissions import is_privileged
 from bot.utils.telegram import delete_message_safely
@@ -20,9 +20,16 @@ def _parse_hours(args: list[str]) -> tuple[int, int] | None:
     if len(args) != 2 or not all(a.isdigit() for a in args):
         return None
     start, end = int(args[0]), int(args[1])
-    if not (0 <= start <= 23 and 0 <= end <= 23):
+    # start == end раньше давало read-only круглые сутки (issue #42).
+    if not (0 <= start <= 23 and 0 <= end <= 23) or start == end:
         return None
     return start, end
+
+
+def is_night(hour: int, start: int, end: int) -> bool:
+    if start == end:  # старые настройки с одинаковыми часами: считаем режим выключенным
+        return False
+    return (start <= hour < end) if start < end else (hour >= start or hour < end)
 
 
 @router.message(Command("nightmode"), HasRole("admin"))
@@ -52,14 +59,8 @@ async def check_night_mode(message: Message, chat_settings: dict, chat_user_role
     if not cfg.get("enabled") or is_privileged(chat_user_role):
         return False
 
-    async with SessionFactory() as session:
-        chat = await get_or_create_chat(session, message.chat.id, message.chat.title or "")
-        offset = chat.utc_offset
-
-    hour = (datetime.now(timezone.utc).hour + offset) % 24
-    start, end = cfg["start_hour"], cfg["end_hour"]
-    in_night = (start <= hour < end) if start < end else (hour >= start or hour < end)
-    if not in_night:
+    hour = (datetime.now(timezone.utc).hour + int(chat_settings.get("utc_offset", 0))) % 24
+    if not is_night(hour, cfg["start_hour"], cfg["end_hour"]):
         return False
 
     await delete_message_safely(message)

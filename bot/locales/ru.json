@@ -40,7 +40,7 @@
   "flood_reason": "Anti-flood: превышен лимит сообщений",
 
   "night_disabled": "Ночной режим выключен.",
-  "night_usage": "Использование: /nightmode ЧАС_НАЧАЛА ЧАС_КОНЦА (0-23) | off",
+  "night_usage": "Использование: /nightmode ЧАС_НАЧАЛА ЧАС_КОНЦА (0-23, разные) | off",
   "night_set": "🌙 Ночной режим: {start}:00–{end}:00",
 
   "words_add_usage": "Использование: /addword СЛОВО",

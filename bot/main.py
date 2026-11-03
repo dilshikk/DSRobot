@@ -17,13 +17,13 @@ from aiogram import Dispatcher
 from bot.config import settings
 from bot.database import init_models
 from bot.handlers import register_all_routers
-from bot.handlers.welcome import captcha as captcha_handler
-from bot.handlers.chat import recurring_messages as recurring_handler
 from bot.middlewares.antiflood import AntiFloodMiddleware
 from bot.middlewares.chat_context import ChatContextMiddleware
 from bot.middlewares.moderation_pipeline import ModerationPipelineMiddleware
 from bot.middlewares.throttling import ThrottlingMiddleware
+from bot.services import bot_registry
 from bot.services.clone_runner import create_bot, load_clone_bots
+from bot.services.recurring import restore_recurring_jobs
 from bot.services.scheduler import scheduler, start as start_scheduler
 
 logging.basicConfig(level=settings.log_level, format="%(asctime)s | %(levelname)s | %(name)s | %(message)s")
@@ -61,12 +61,17 @@ async def main() -> None:
     logger.info("Инициализация базы данных...")
     await init_models()
 
-    captcha_handler.bind_bot(bot)
-    recurring_handler.bind_bot(bot)
-    start_scheduler()
-
     clone_bots = await load_clone_bots(main_bot_id=bot.id)
     all_bots = [bot, *clone_bots]
+
+    # Реестр заполняется ДО запуска планировщика: задачи, пропущенные во время простоя
+    # (например, таймауты капчи), выполнятся сразу после старта и должны найти своего бота.
+    bot_registry.register(bot, main=True)
+    for clone in clone_bots:
+        bot_registry.register(clone)
+    start_scheduler()
+    restored = await restore_recurring_jobs()
+    logger.info("Активных рассылок: %d", restored)
 
     # По умолчанию aiogram подписывается только на типы апдейтов, для которых есть
     # хендлеры. Для edited_message хендлеров нет — работает только middleware,

@@ -21,8 +21,9 @@ from aiogram import BaseMiddleware
 from aiogram.types import Message, TelegramObject
 
 from bot.handlers.chat.group_statistics import bump_stat
+from bot.handlers.misc import alphabets
 from bot.handlers.moderation import (
-    alphabets, anti_nsfw, antispam, approve_mode, banned_words, blocks, link_settings,
+    anti_nsfw, antispam, approve_mode, banned_words, blocks, link_settings,
     masked_users, max_message_length, media_blocks, message_deletion, night_mode,
 )
 

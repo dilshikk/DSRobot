@@ -1,11 +1,12 @@
-"""Media blocks: photo / video / sticker / gif / voice / document."""
-from aiogram import Router, F
+"""Media blocks: photo / video / sticker / gif / voice / document. Проверка вызывается из moderation_pipeline."""
+from aiogram import Router
 from aiogram.filters import Command, CommandObject
 from aiogram.types import Message
 
 from bot.database import SessionFactory
 from bot.filters.roles import HasRole
 from bot.services.settings_service import update_settings
+from bot.utils.permissions import is_privileged
 
 router = Router(name="media_blocks")
 
@@ -30,10 +31,9 @@ async def block_media(message: Message, command: CommandObject) -> None:
     await message.answer(f"\u2705 Медиа-блок «{key}» включён.")
 
 
-@router.message(F.photo | F.video | F.sticker | F.animation | F.voice | F.document)
-async def enforce_media_block(message: Message, chat_settings: dict, chat_user_role: str = "member") -> None:
-    if chat_user_role in ("admin", "owner", "developer"):
-        return
+async def check_media_block(message: Message, chat_settings: dict, chat_user_role: str) -> bool:
+    if is_privileged(chat_user_role):
+        return False
     blocks = chat_settings.get("media_blocks", {})
     for kind, check in MEDIA_MAP.items():
         if blocks.get(kind) and check(message):
@@ -41,4 +41,5 @@ async def enforce_media_block(message: Message, chat_settings: dict, chat_user_r
                 await message.delete()
             except Exception:
                 pass
-            return
+            return True
+    return False

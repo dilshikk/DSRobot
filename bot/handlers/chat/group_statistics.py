@@ -1,7 +1,11 @@
-"""Group statistics: инкремент дневных счётчиков + команда /stats."""
+"""Group statistics: дневные счётчики + команда /stats.
+
+Счётчики увеличиваются из moderation_pipeline (сообщения) и service_events
+(вступления/выходы) — отдельные хендлеры перехватывали события у других модулей (issue #1).
+"""
 from datetime import date
 
-from aiogram import Router, F
+from aiogram import Router
 from aiogram.filters import Command
 from sqlalchemy import select
 
@@ -12,7 +16,7 @@ from bot.filters.roles import HasRole
 router = Router(name="group_statistics")
 
 
-async def _bump(chat_id: int, field: str) -> None:
+async def bump_stat(chat_id: int, field: str) -> None:
     today = date.today()
     async with SessionFactory() as session:
         row = (await session.execute(
@@ -21,23 +25,8 @@ async def _bump(chat_id: int, field: str) -> None:
         if row is None:
             row = GroupStat(chat_id=chat_id, date=today)
             session.add(row)
-        setattr(row, field, getattr(row, field) + 1)
+        setattr(row, field, (getattr(row, field) or 0) + 1)
         await session.commit()
-
-
-@router.message(F.text, ~F.text.startswith("/"))
-async def count_message(message) -> None:
-    await _bump(message.chat.id, "messages_count")
-
-
-@router.message(F.new_chat_members)
-async def count_join(message) -> None:
-    await _bump(message.chat.id, "joins_count")
-
-
-@router.message(F.left_chat_member)
-async def count_leave(message) -> None:
-    await _bump(message.chat.id, "leaves_count")
 
 
 @router.message(Command("stats"), HasRole("admin"))

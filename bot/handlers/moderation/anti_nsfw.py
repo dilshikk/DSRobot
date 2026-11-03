@@ -3,8 +3,9 @@ Anti-NSFW: точка интеграции с внешним классифик�
 (например Sightengine / AWS Rekognition / собственная модель).
 Здесь — включение/выключение фичи и заготовка вызова; сам ML-вызов — TODO,
 т.к. требует API-ключ конкретного провайдера, который не специфицирован в ТЗ.
+Проверка вызывается из moderation_pipeline.
 """
-from aiogram import Router, F
+from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
 
@@ -26,10 +27,9 @@ async def toggle_nsfw(message: Message, chat_settings: dict) -> None:
     )
 
 
-@router.message(F.photo)
-async def scan_photo_stub(message: Message, chat_settings: dict) -> None:
-    if not chat_settings.get("anti_nsfw", {}).get("enabled"):
-        return
+async def check_nsfw(message: Message, chat_settings: dict, chat_user_role: str) -> bool:
+    if not message.photo or not chat_settings.get("anti_nsfw", {}).get("enabled"):
+        return False
     # TODO: скачать message.photo[-1].file_id через bot.get_file и отправить
     # в выбранный NSFW-классификатор (см. docstring модуля), удалить при положительном срабатывании.
-    return
+    return False

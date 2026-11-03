@@ -1,7 +1,9 @@
 """Goodbye: сообщение при выходе участника."""
-from aiogram import Router, F
+from __future__ import annotations
+
+from aiogram import Bot, Router
 from aiogram.filters import Command, CommandObject
-from aiogram.types import Message
+from aiogram.types import Message, User
 
 from bot.database import SessionFactory
 from bot.filters.roles import HasRole
@@ -20,11 +22,13 @@ async def set_goodbye(message: Message, command: CommandObject) -> None:
     await message.answer("\u2705 Прощание обновлено.")
 
 
-@router.message(F.left_chat_member)
-async def farewell(message: Message, chat_settings: dict) -> None:
+async def farewell(bot: Bot, chat_id: int, chat_settings: dict, member: User | None) -> None:
+    """Вызывается из service_events при выходе участника."""
     cfg = chat_settings.get("goodbye", {})
-    if not cfg.get("enabled"):
+    if member is None or not cfg.get("enabled"):
         return
-    member = message.left_chat_member
-    await message.answer(cfg.get("text", "{mention} покинул(а) чат.").format(mention=member.mention_html()),
-                          parse_mode="HTML")
+    await bot.send_message(
+        chat_id,
+        cfg.get("text", "{mention} покинул(а) чат.").format(mention=member.mention_html()),
+        parse_mode="HTML",
+    )

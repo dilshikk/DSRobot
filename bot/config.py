@@ -17,6 +17,13 @@ class Settings(BaseSettings):
     bot_id: int | None = None
     support_chat_id: int | None = None
 
+    # Clones (issue #6)
+    # Fernet-ключ для шифрования токенов клонов. Без него клоны отключены.
+    clone_encryption_key: str | None = None
+    # Telegram id через запятую, кому разрешено создавать клоны. Пусто = никому.
+    clone_allowed_user_ids: str = ""
+    max_clones_per_user: int = 1
+
     # Database
     postgres_user: str
     postgres_password: str
@@ -35,6 +42,15 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     sentry_dsn: str | None = None
     crypto_api_url: str = "https://api.coingecko.com/api/v3/simple/price"
+
+    @property
+    def clone_allowed_ids(self) -> set[int]:
+        ids: set[int] = set()
+        for part in self.clone_allowed_user_ids.split(","):
+            part = part.strip()
+            if part.isdigit():
+                ids.add(int(part))
+        return ids
 
     @property
     def database_url(self) -> str:

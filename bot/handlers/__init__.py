@@ -8,7 +8,7 @@
 """
 from aiogram import Dispatcher
 
-from bot.handlers.core import clones, lang_settings, start_help, time_settings
+from bot.handlers.core import clones, lang_settings, member_updates, start_help, time_settings
 from bot.handlers.moderation import (
     anonymous_admins, antiflood, antispam, anti_nsfw, approve_mode, banned_words,
     blocks, channel_moderation, custom_roles, link_settings, masked_users,
@@ -28,6 +28,8 @@ ALL_ROUTERS = [
     service_events.router,
     # core
     start_help.router, clones.router, time_settings.router, lang_settings.router,
+    # chat_member: сброс кэша роли при повышении/понижении (issue #11)
+    member_updates.router,
     # moderation
     roles_permissions.router, custom_roles.router, moderation_commands.router,
     channel_moderation.router, anonymous_admins.router, warns.router,

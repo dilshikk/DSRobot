@@ -18,6 +18,7 @@ from bot.config import settings
 from bot.database import init_models
 from bot.handlers import register_all_routers
 from bot.middlewares.antiflood import AntiFloodMiddleware
+from bot.middlewares.callback_context import CallbackContextMiddleware
 from bot.middlewares.chat_context import ChatContextMiddleware
 from bot.middlewares.moderation_pipeline import ModerationPipelineMiddleware
 from bot.middlewares.throttling import ThrottlingMiddleware
@@ -64,6 +65,9 @@ def setup_middlewares(dp: Dispatcher) -> None:
     dp.edited_message.outer_middleware(ChatContextMiddleware())
     dp.edited_message.outer_middleware(ModerationPipelineMiddleware())
 
+    # Нажатия inline-кнопок тоже получают роль и настройки чата (issue #11).
+    dp.callback_query.outer_middleware(CallbackContextMiddleware())
+
 
 async def main() -> None:
     setup_sentry()
@@ -90,8 +94,9 @@ async def main() -> None:
 
     # По умолчанию aiogram подписывается только на типы апдейтов, для которых есть
     # хендлеры. Для edited_message хендлеров нет — работает только middleware,
-    # поэтому тип нужно запросить явно.
-    allowed_updates = sorted(set(dp.resolve_used_update_types()) | {"edited_message"})
+    # поэтому тип нужно запросить явно. chat_member (issue #11) Telegram не присылает,
+    # пока его не запросить явно, — добавляем на всякий случай и его.
+    allowed_updates = sorted(set(dp.resolve_used_update_types()) | {"edited_message", "chat_member"})
 
     logger.info("Бот запущен (клонов: %d), начинаю polling...", len(clone_bots))
     try:

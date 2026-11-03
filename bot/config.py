@@ -9,6 +9,11 @@ from urllib.parse import quote
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+def _parse_ids(raw: str) -> set[int]:
+    """'1, 2,abc' -> {1, 2}. Мусор пропускается."""
+    return {int(part) for part in (p.strip() for p in raw.split(",")) if part.isdigit()}
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
@@ -16,6 +21,10 @@ class Settings(BaseSettings):
     bot_token: str
     bot_id: int | None = None
     support_chat_id: int | None = None
+
+    # Roles (issue #11)
+    # Telegram id через запятую, кто получает роль developer во всех чатах. Пусто = никто.
+    developer_user_ids: str = ""
 
     # Clones (issue #6)
     # Fernet-ключ для шифрования токенов клонов. Без него клоны отключены.
@@ -45,12 +54,11 @@ class Settings(BaseSettings):
 
     @property
     def clone_allowed_ids(self) -> set[int]:
-        ids: set[int] = set()
-        for part in self.clone_allowed_user_ids.split(","):
-            part = part.strip()
-            if part.isdigit():
-                ids.add(int(part))
-        return ids
+        return _parse_ids(self.clone_allowed_user_ids)
+
+    @property
+    def developer_ids(self) -> set[int]:
+        return _parse_ids(self.developer_user_ids)
 
     @property
     def database_url(self) -> str:

@@ -1,11 +1,51 @@
 {
   "welcome_default": "Добро пожаловать, {mention}!",
   "goodbye_default": "{mention} покинул(а) чат.",
-  "not_admin": "\u274c \u0423 \u0432\u0430\u0441 \u043d\u0435\u0434\u043e\u0441\u0442\u0430\u0442\u043e\u0447\u043d\u043e \u043f\u0440\u0430\u0432 \u0434\u043b\u044f \u044d\u0442\u043e\u0439 \u043a\u043e\u043c\u0430\u043d\u0434\u044b.",
-  "user_banned": "\u{1F6AB} {mention} \u0437\u0430\u0431\u0430\u043d\u0435\u043d(\u0430).",
-  "user_muted": "\u{1F507} {mention} \u043e\u0442\u043a\u043b\u044e\u0447\u0451\u043d(\u0430) \u043e\u0442 \u0447\u0430\u0442\u0430.",
-  "user_warned": "\u26A0\uFE0F {mention} \u043f\u043e\u043b\u0443\u0447\u0438\u043b(\u0430) \u043f\u0440\u0435\u0434\u0443\u043f\u0440\u0435\u0436\u0434\u0435\u043d\u0438\u0435 ({count}/{max}).",
-  "captcha_prompt": "\u{1F510} {mention}, \u0440\u0435\u0448\u0438\u0442\u0435 \u043f\u0440\u0438\u043c\u0435\u0440, \u0447\u0442\u043e\u0431\u044b \u043f\u043e\u043b\u0443\u0447\u0438\u0442\u044c \u0434\u043e\u0441\u0442\u0443\u043f: {question}",
-  "captcha_ok": "\u2705 \u041f\u0440\u043e\u0432\u0435\u0440\u043a\u0430 \u043f\u0440\u043e\u0439\u0434\u0435\u043d\u0430, \u0434\u043e\u0431\u0440\u043e \u043f\u043e\u0436\u0430\u043b\u043e\u0432\u0430\u0442\u044c!",
-  "help_text": "\u042f \u2014 \u0431\u043e\u0442 \u0434\u043b\u044f \u0443\u043f\u0440\u0430\u0432\u043b\u0435\u043d\u0438\u044f \u0433\u0440\u0443\u043f\u043f\u0430\u043c\u0438 \u0438 \u043a\u0430\u043d\u0430\u043b\u0430\u043c\u0438. \u0421\u043f\u0438\u0441\u043e\u043a \u043a\u043e\u043c\u0430\u043d\u0434: /commands"
+  "not_admin": "❌ У вас недостаточно прав для этой команды.",
+  "help_text": "Я — бот для управления группами и каналами. Список команд: /commands",
+  "help_sections": "<b>Основные разделы команд</b>\n/rules — правила чата\n/ban /mute /kick /warn — модерация (ответом на сообщение, @username или id)\n/setlang — язык бота в чате\n/commands — полный список команд по категориям",
+  "commands_list": "📂 <b>Категории</b>: modules, moderation, welcome, warns, antiflood, captcha, blocks, filters, notes, admin, stats, privacy",
+
+  "lang_usage": "Доступные языки: {langs}",
+  "lang_changed": "✅ Язык чата: русский.",
+
+  "rules_usage": "Использование: /setrules ТЕКСТ ПРАВИЛ",
+  "rules_updated": "✅ Правила обновлены.",
+  "rules_empty": "Правила для этого чата ещё не заданы.",
+
+  "user_banned": "🚫 {mention} забанен(а).",
+  "user_unbanned": "✅ Разбанен(а).",
+  "user_kicked": "👥 Пользователь удалён из чата (может зайти повторно).",
+  "user_muted": "🔇 {mention} отключён(а) от чата.",
+  "user_unmuted": "🔊 Размучен(а).",
+  "user_warned": "⚠️ {mention} получил(а) предупреждение ({count}/{max}).",
+  "warn_removed": "✅ Одно предупреждение снято.",
+  "no_warns": "У пользователя нет предупреждений.",
+  "warn_limit_reached": "🚫 Лимит предупреждений исчерпан — применено действие «{action}».",
+  "warn_limit_reason": "Достигнут лимит предупреждений",
+  "warn_limit_usage": "Использование: /setwarnlimit ЧИСЛО (не меньше 1)",
+  "warn_limit_set": "✅ Лимит предупреждений установлен: {limit}",
+
+  "usage_ban": "/ban [причина]",
+  "usage_unban": "/unban",
+  "usage_kick": "/kick [причина]",
+  "usage_mute": "/mute [1h/1d/...] [причина]",
+  "usage_unmute": "/unmute",
+  "usage_warn": "/warn [причина]",
+  "usage_unwarn": "/unwarn",
+
+  "target_missing": "Ответьте на сообщение пользователя или укажите @username или id: {usage}",
+  "target_anonymous_admin": "Нельзя применить это действие к анонимному администратору.",
+  "target_channel": "Сообщение отправлено от имени канала. Используйте /banchannel.",
+  "target_unknown_author": "Не удалось определить автора сообщения.",
+  "target_username_not_found": "Пользователь @{username} не найден: бот ещё не видел его в чате. Ответьте на его сообщение или укажите числовой id.",
+  "target_is_bot": "Нельзя применить это действие к самому боту.",
+  "target_is_admin": "Нельзя применить это действие к администратору чата.",
+
+  "sanction_no_rights": "У бота не хватает прав. Выдайте ему права администратора на блокировку участников и удаление сообщений.",
+  "sanction_admin": "Нельзя применить это действие к администратору чата.",
+  "sanction_user_not_found": "Пользователь не найден в этом чате.",
+  "sanction_rejected": "Telegram отклонил действие: {error}",
+  "sanction_forbidden": "Бот не может выполнить действие: его исключили из чата или лишили прав.",
+  "sanction_failed": "Не удалось выполнить действие из-за ошибки Telegram. Попробуйте ещё раз."
 }

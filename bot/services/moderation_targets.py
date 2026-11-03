@@ -8,6 +8,8 @@
 
 Нельзя наказать самого бота, администратора или владельца чата, а также анонимного
 админа. Сообщения от имени канала (sender_chat) наказываются через /banchannel.
+
+issue #12: все ответы — на языке чата (аргумент lang).
 """
 from __future__ import annotations
 
@@ -22,6 +24,7 @@ from sqlalchemy import func, select
 from bot.database import SessionFactory
 from bot.database.models import User
 from bot.services.moderation_actions import apply_sanction
+from bot.utils.i18n import t
 
 logger = logging.getLogger(__name__)
 
@@ -63,17 +66,17 @@ def _real_reply(message: Message) -> Message | None:
     return reply
 
 
-async def resolve_target(message: Message, args: str | None) -> TargetResult:
+async def resolve_target(message: Message, args: str | None, lang: str = "ru") -> TargetResult:
     args = (args or "").strip()
     reply = _real_reply(message)
 
     if reply is not None:
         if reply.sender_chat is not None:
             if reply.sender_chat.id == message.chat.id:
-                return TargetResult(None, error="Нельзя применить это действие к анонимному администратору.")
-            return TargetResult(None, error="Сообщение отправлено от имени канала. Используйте /banchannel.")
+                return TargetResult(None, error=t(lang, "target_anonymous_admin"))
+            return TargetResult(None, error=t(lang, "target_channel"))
         if reply.from_user is None:
-            return TargetResult(None, error="Не удалось определить автора сообщения.")
+            return TargetResult(None, error=t(lang, "target_unknown_author"))
         return TargetResult(Target(reply.from_user.id, reply.from_user.mention_html()), args)
 
     first, _, rest = args.partition(" ")
@@ -89,19 +92,16 @@ async def resolve_target(message: Message, args: str | None) -> TargetResult:
         username = first[1:]
         target = await _find_by_username(username)
         if target is None:
-            return TargetResult(None, error=(
-                f"Пользователь @{escape(username)} не найден: бот ещё не видел его в чате. "
-                "Ответьте на его сообщение или укажите числовой id."
-            ))
+            return TargetResult(None, error=t(lang, "target_username_not_found", username=escape(username)))
         return TargetResult(target, rest)
 
     return TargetResult(None)
 
 
-async def protection_error(message: Message, user_id: int) -> str | None:
+async def protection_error(message: Message, user_id: int, lang: str = "ru") -> str | None:
     """Возвращает причину, по которой пользователя нельзя наказать, или None."""
     if user_id == message.bot.id:
-        return "Нельзя применить это действие к самому боту."
+        return t(lang, "target_is_bot")
     try:
         member = await message.bot.get_chat_member(message.chat.id, user_id)
     except TelegramAPIError as exc:
@@ -109,23 +109,23 @@ async def protection_error(message: Message, user_id: int) -> str | None:
         logger.info("get_chat_member(%s, %s) failed: %s", message.chat.id, user_id, exc)
         return None
     if isinstance(member, (ChatMemberOwner, ChatMemberAdministrator)):
-        return "Нельзя применить это действие к администратору чата."
+        return t(lang, "target_is_admin")
     return None
 
 
 async def prepare_target(
-    message: Message, args: str | None, usage: str, protect: bool = True,
+    message: Message, args: str | None, usage: str, protect: bool = True, lang: str = "ru",
 ) -> tuple[Target, str] | None:
     """Находит цель и причину. Сам отвечает в чат при ошибке и возвращает None."""
-    result = await resolve_target(message, args)
+    result = await resolve_target(message, args, lang)
     if result.error:
         await message.answer(f"\u26a0\ufe0f {result.error}")
         return None
     if result.target is None:
-        await message.answer(f"Ответьте на сообщение пользователя или укажите @username или id: {usage}")
+        await message.answer(t(lang, "target_missing", usage=usage))
         return None
     if protect:
-        error = await protection_error(message, result.target.user_id)
+        error = await protection_error(message, result.target.user_id, lang)
         if error:
             await message.answer(f"\u26a0\ufe0f {error}")
             return None
@@ -133,12 +133,13 @@ async def prepare_target(
 
 
 async def run_sanction(
-    message: Message, target: Target, action: str, reason: str = "", duration_minutes: int | None = None,
+    message: Message, target: Target, action: str, reason: str = "",
+    duration_minutes: int | None = None, lang: str = "ru",
 ) -> bool:
     """Применяет санкцию от имени автора команды. При ошибке сообщает о ней в чат."""
     actor_id = message.from_user.id if message.from_user else 0
     error = await apply_sanction(message.bot, message.chat.id, target.user_id, action, reason, actor_id,
-                                 duration_minutes)
+                                 duration_minutes, lang=lang)
     if error:
         await message.answer(f"\u26a0\ufe0f {error}")
         return False

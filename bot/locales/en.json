@@ -1,11 +1,51 @@
 {
   "welcome_default": "Welcome, {mention}!",
   "goodbye_default": "{mention} left the chat.",
-  "not_admin": "You don't have permission to use this command.",
-  "user_banned": "{mention} has been banned.",
-  "user_muted": "{mention} has been muted.",
-  "user_warned": "{mention} received a warning ({count}/{max}).",
-  "captcha_prompt": "{mention}, solve this to get access: {question}",
-  "captcha_ok": "Verified, welcome!",
-  "help_text": "I'm a group/channel management bot. Command list: /commands"
+  "not_admin": "❌ You don't have permission to use this command.",
+  "help_text": "I'm a group and channel management bot. Command list: /commands",
+  "help_sections": "<b>Main command sections</b>\n/rules — chat rules\n/ban /mute /kick /warn — moderation (reply to a message, @username or id)\n/setlang — bot language in this chat\n/commands — full list of commands by category",
+  "commands_list": "📂 <b>Categories</b>: modules, moderation, welcome, warns, antiflood, captcha, blocks, filters, notes, admin, stats, privacy",
+
+  "lang_usage": "Available languages: {langs}",
+  "lang_changed": "✅ Chat language: English.",
+
+  "rules_usage": "Usage: /setrules RULES TEXT",
+  "rules_updated": "✅ Rules updated.",
+  "rules_empty": "No rules have been set for this chat yet.",
+
+  "user_banned": "🚫 {mention} has been banned.",
+  "user_unbanned": "✅ Unbanned.",
+  "user_kicked": "👥 User removed from the chat (they can rejoin).",
+  "user_muted": "🔇 {mention} has been muted.",
+  "user_unmuted": "🔊 Unmuted.",
+  "user_warned": "⚠️ {mention} received a warning ({count}/{max}).",
+  "warn_removed": "✅ One warning removed.",
+  "no_warns": "This user has no warnings.",
+  "warn_limit_reached": "🚫 Warning limit reached — action «{action}» applied.",
+  "warn_limit_reason": "Warning limit reached",
+  "warn_limit_usage": "Usage: /setwarnlimit NUMBER (at least 1)",
+  "warn_limit_set": "✅ Warning limit set to: {limit}",
+
+  "usage_ban": "/ban [reason]",
+  "usage_unban": "/unban",
+  "usage_kick": "/kick [reason]",
+  "usage_mute": "/mute [1h/1d/...] [reason]",
+  "usage_unmute": "/unmute",
+  "usage_warn": "/warn [reason]",
+  "usage_unwarn": "/unwarn",
+
+  "target_missing": "Reply to the user's message or specify @username or id: {usage}",
+  "target_anonymous_admin": "This action can't be applied to an anonymous admin.",
+  "target_channel": "This message was sent on behalf of a channel. Use /banchannel.",
+  "target_unknown_author": "Couldn't determine the author of the message.",
+  "target_username_not_found": "User @{username} not found: the bot hasn't seen them in this chat yet. Reply to their message or use their numeric id.",
+  "target_is_bot": "This action can't be applied to the bot itself.",
+  "target_is_admin": "This action can't be applied to a chat administrator.",
+
+  "sanction_no_rights": "The bot doesn't have enough rights. Make it an admin with permission to ban users and delete messages.",
+  "sanction_admin": "This action can't be applied to a chat administrator.",
+  "sanction_user_not_found": "User not found in this chat.",
+  "sanction_rejected": "Telegram rejected the action: {error}",
+  "sanction_forbidden": "The bot can't perform this action: it was removed from the chat or lost its rights.",
+  "sanction_failed": "The action failed because of a Telegram error. Please try again."
 }

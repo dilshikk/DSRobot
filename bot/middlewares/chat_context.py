@@ -4,6 +4,9 @@ Chat Context Middleware.
 определяет роль отправителя в чате (через Telegram get_chat_member, с кэшем в Redis)
 и прокидывает всё в handler data.
 Поддерживает анонимных админов (sender_chat) — Support for anonymous admins.
+
+issue #12: в data["lang"] кладётся язык ответов — Chat.lang в группах (/setlang),
+язык Telegram-клиента пользователя в личке.
 """
 from __future__ import annotations
 
@@ -14,10 +17,12 @@ from aiogram import BaseMiddleware
 from aiogram.exceptions import TelegramAPIError
 from aiogram.types import ChatMemberAdministrator, ChatMemberOwner, Message, TelegramObject, User as TgUser
 
+from bot.config import settings
 from bot.database import SessionFactory
 from bot.services.cache import get_json, set_json
 from bot.services.settings_service import get_or_create_chat, get_settings
 from bot.services.user_service import ensure_chat_user, upsert_tg_user
+from bot.utils.i18n import normalize_lang
 
 logger = logging.getLogger(__name__)
 
@@ -45,15 +50,19 @@ class ChatContextMiddleware(BaseMiddleware):
     ) -> Any:
         message = _extract_message(event)
         chat = message.chat if message else None
+        default_lang = normalize_lang(settings.default_lang)
 
         if chat is None or chat.type == "private":
+            user = message.from_user if message else None
+            data["lang"] = normalize_lang(user.language_code if user else None, default_lang)
             return await handler(event, data)
 
         user = message.from_user
         is_anonymous_admin = bool(message.sender_chat and message.sender_chat.id == chat.id)
 
         async with SessionFactory() as session:
-            await get_or_create_chat(session, chat.id, chat.title or "", chat.type)
+            db_chat = await get_or_create_chat(session, chat.id, chat.title or "", chat.type)
+            data["lang"] = normalize_lang(db_chat.lang, default_lang)
             data["chat_settings"] = await get_settings(session, chat.id)
 
             # Анонимный админ приходит от служебного аккаунта GroupAnonymousBot — его не сохраняем.

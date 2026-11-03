@@ -19,8 +19,17 @@ from bot.services.user_service import ensure_chat_user, upsert_tg_user
 
 ROLE_CACHE_TTL = 60
 # Как часто (сек) обновлять users/chat_users для одного и того же человека в чате.
-# Без этого каждое сообщение давало бы лишние запись в PostgreSQL.
+# Без этого каждое сообщение давало бы лишнюю запись в PostgreSQL.
 SEEN_CACHE_TTL = 600
+
+
+def _extract_message(event: TelegramObject) -> Message | None:
+    # Middleware висит на dp.message, поэтому event — это сам Message.
+    # Раньше код искал event.message / data["event_message"], которых у Message нет,
+    # и middleware молча пропускал все сообщения без контекста.
+    if isinstance(event, Message):
+        return event
+    return getattr(event, "message", None)
 
 
 class ChatContextMiddleware(BaseMiddleware):
@@ -30,14 +39,14 @@ class ChatContextMiddleware(BaseMiddleware):
         event: TelegramObject,
         data: dict[str, Any],
     ) -> Any:
-        message: Message | None = data.get("event_message") or getattr(event, "message", None)
-        chat = getattr(message, "chat", None) if message else None
+        message = _extract_message(event)
+        chat = message.chat if message else None
 
         if chat is None or chat.type == "private":
             return await handler(event, data)
 
-        user = getattr(message, "from_user", None) if message else None
-        is_anonymous_admin = bool(message and message.sender_chat and message.sender_chat.id == chat.id)
+        user = message.from_user
+        is_anonymous_admin = bool(message.sender_chat and message.sender_chat.id == chat.id)
 
         async with SessionFactory() as session:
             await get_or_create_chat(session, chat.id, chat.title or "", chat.type)

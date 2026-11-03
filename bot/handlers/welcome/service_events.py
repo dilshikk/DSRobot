@@ -5,11 +5,12 @@
 welcome, captcha, group_statistics), но aiogram вызывает только первый подходящий —
 поэтому капча и приветствие не срабатывали. Здесь всё выполняется по порядку:
 
-вступление: блок ботов → капча → приветствие → статистика → удаление служебного сообщения
+вступление: блок ботов → режим одобрения → капча → приветствие → статистика → удаление служебного сообщения
 выход:      прощание → статистика → удаление служебного сообщения
 закреп:     удаление служебного сообщения
 
 issue #12: капча, приветствие и прощание пишутся на языке чата (`lang`).
+issue #50: при включённом режиме одобрения новички помечаются как ждущие одобрения.
 """
 from __future__ import annotations
 
@@ -20,6 +21,7 @@ from aiogram import F, Router
 from aiogram.types import Message
 
 from bot.handlers.chat.group_statistics import bump_stat
+from bot.handlers.moderation.approve_mode import mark_new_members_pending
 from bot.handlers.moderation.blocks import kick_blocked_bots
 from bot.handlers.moderation.message_deletion import delete_service_message
 from bot.handlers.welcome.captcha import start_captcha
@@ -48,6 +50,8 @@ async def on_members_joined(message: Message, chat_settings: dict | None = None,
     if remaining is None:
         remaining = message.new_chat_members
     humans = [m for m in remaining if not m.is_bot]
+
+    await _safe(mark_new_members_pending(chat_id, settings, humans), "approve_mode")
 
     in_captcha = await _safe(start_captcha(bot, chat_id, settings, humans, lang=lang), "captcha") or []
     # Участников на капче поприветствуем после её прохождения (см. captcha.py).

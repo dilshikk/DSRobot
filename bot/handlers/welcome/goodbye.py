@@ -12,6 +12,7 @@ from bot.filters.roles import HasRole
 from bot.services.settings_service import update_settings
 from bot.utils.html_fallback import send_html_or_escaped
 from bot.utils.i18n import t
+from bot.utils.text_template import render_member_text
 
 router = Router(name="goodbye")
 
@@ -37,7 +38,8 @@ def goodbye_text(cfg: dict, lang: str, mention: str, escape_custom: bool = False
     """Свой текст админа, если задан, иначе стандартное прощание на языке чата."""
     custom = cfg.get("text")
     if custom:
-        return (escape(custom) if escape_custom else custom).format(mention=mention)
+        # Без str.format(): фигурные скобки в тексте админа больше не ломают прощание (issue #50).
+        return render_member_text(escape(custom) if escape_custom else custom, mention)
     return t(lang, "goodbye_default", mention=mention)
 
 

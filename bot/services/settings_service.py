@@ -43,11 +43,19 @@ async def update_settings(session: AsyncSession, chat_id: int, section: str, val
     if row is None:
         row = ChatSettings(chat_id=chat_id, data={})
         session.add(row)
-    row.data.setdefault(section, {})
-    row.data[section] = {**row.data[section], **values}
+
+    # Колонка data — обычный JSON без MutableDict, поэтому SQLAlchemy не видит
+    # изменений "на месте" (row.data[...] = ...). Собираем новый словарь и
+    # присваиваем его целиком — так изменение гарантированно попадёт в UPDATE.
+    new_data = copy.deepcopy(row.data or {})
+    current_section = new_data.get(section)
+    if not isinstance(current_section, dict):
+        current_section = {}
+    new_data[section] = {**current_section, **values}
+    row.data = new_data
     await session.commit()
 
-    merged = _merge_defaults(row.data)
+    merged = _merge_defaults(new_data)
     await set_json(f"chat_settings:{chat_id}", merged, ex=CACHE_TTL)
     return merged
 

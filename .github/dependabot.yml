@@ -5,14 +5,27 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    ignore:
+      # Большие обновления (5 -> 8) часто ломают код, их делаем вручную
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+      # aiogram жёстко ограничивает версии этих библиотек
+      - dependency-name: "pydantic"
+        update-types: ["version-update:semver-minor"]
+      - dependency-name: "aiohttp"
+        update-types: ["version-update:semver-minor"]
     groups:
-      python-deps:
-        patterns: ["*"]
+      # В один PR собираются только мелкие исправления
+      patch-updates:
+        update-types: ["patch"]
 
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
       interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
 
   - package-ecosystem: docker
     directory: "/"

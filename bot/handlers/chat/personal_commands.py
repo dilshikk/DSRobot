@@ -37,6 +37,15 @@ async def del_note(message: Message, command: CommandObject) -> None:
     await message.answer("\u2705 Заметка удалена.")
 
 
+@router.message(Command("notes"))
+async def list_notes(message: Message) -> None:
+    async with SessionFactory() as session:
+        triggers = (await session.execute(
+            select(PersonalCommand.trigger).where(PersonalCommand.chat_id == message.chat.id).order_by(PersonalCommand.trigger)
+        )).scalars().all()
+    await message.answer("Заметки: " + ", ".join(triggers) if triggers else "Заметок пока нет.", parse_mode=None)
+
+
 @router.message(F.text.startswith("#"))
 async def trigger_note(message: Message) -> None:
     trigger = message.text.split()[0].lower()

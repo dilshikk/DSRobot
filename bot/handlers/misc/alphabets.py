@@ -25,9 +25,14 @@ SCRIPT_PATTERNS = {
 
 @router.message(Command("setalphabet"), HasRole("admin"))
 async def set_alphabet(message: Message, command: CommandObject) -> None:
+    if (command.args or "").strip().lower() == "off":
+        async with SessionFactory() as session:
+            await update_settings(session, message.chat.id, "alphabets", {"enabled": False})
+        await message.answer("\u2705 Фильтр алфавитов выключен.")
+        return
     allowed = [a.strip() for a in (command.args or "").split(",") if a.strip() in SCRIPT_PATTERNS]
     if not allowed:
-        await message.answer(f"Использование: /setalphabet <{'|'.join(SCRIPT_PATTERNS)}>[,...]")
+        await message.answer(f"Использование: /setalphabet <{'|'.join(SCRIPT_PATTERNS)}>[,...] | off")
         return
     async with SessionFactory() as session:
         await update_settings(session, message.chat.id, "alphabets", {"enabled": True, "allowed": allowed})

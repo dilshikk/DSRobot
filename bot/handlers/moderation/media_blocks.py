@@ -36,7 +36,18 @@ async def block_media(message: Message, command: CommandObject, lang: str = "ru"
         return
     async with SessionFactory() as session:
         await update_settings(session, message.chat.id, "media_blocks", {key: True})
-    await message.answer(t(lang, "media_block_on", key=key))
+    await message.answer(t(lang, "media_block_on", name=key))
+
+
+@router.message(Command("unblockmedia"), HasRole("admin"))
+async def unblock_media(message: Message, command: CommandObject, lang: str = "ru") -> None:
+    key = (command.args or "").strip().lower()
+    if key not in MEDIA_MAP:
+        await message.answer(t(lang, "unblockmedia_usage", options=" | ".join(MEDIA_MAP)))
+        return
+    async with SessionFactory() as session:
+        await update_settings(session, message.chat.id, "media_blocks", {key: False})
+    await message.answer(t(lang, "media_block_off", name=key))
 
 
 async def check_media_block(message: Message, chat_settings: dict, chat_user_role: str) -> bool:

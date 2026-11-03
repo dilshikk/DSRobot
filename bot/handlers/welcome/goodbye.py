@@ -26,6 +26,13 @@ async def set_goodbye(message: Message, command: CommandObject, lang: str = "ru"
     await message.answer(t(lang, "goodbye_updated"))
 
 
+@router.message(Command("goodbyeoff"), HasRole("admin"))
+async def goodbye_off(message: Message, lang: str = "ru") -> None:
+    async with SessionFactory() as session:
+        await update_settings(session, message.chat.id, "goodbye", {"enabled": False})
+    await message.answer(t(lang, "goodbye_disabled"))
+
+
 def goodbye_text(cfg: dict, lang: str, mention: str, escape_custom: bool = False) -> str:
     """Свой текст админа, если задан, иначе стандартное прощание на языке чата."""
     custom = cfg.get("text")

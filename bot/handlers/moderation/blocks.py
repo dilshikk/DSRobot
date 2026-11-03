@@ -15,7 +15,8 @@ from bot.filters.roles import HasRole
 from bot.services.settings_service import update_settings
 from bot.utils.i18n import t
 from bot.utils.permissions import is_privileged
-from bot.utils.telegram import delete_message_safely, is_rights_error, notify_missing_rights
+from bot.handlers.moderation.link_settings import extract_links
+from bot.utils.telegram import delete_message_safely, is_rights_error, message_entities, notify_missing_rights
 
 router = Router(name="blocks")
 logger = logging.getLogger(__name__)
@@ -32,7 +33,7 @@ async def _set_block(message: Message, command: CommandObject, lang: str, enable
         return
     async with SessionFactory() as session:
         await update_settings(session, message.chat.id, "blocks", {key: enabled})
-    await message.answer(t(lang, "block_on" if enabled else "block_off", key=key))
+    await message.answer(t(lang, "block_on" if enabled else "block_off", name=key))
 
 
 @router.message(Command("block"), HasRole("admin"))
@@ -54,6 +55,22 @@ async def check_forward_block(message: Message, chat_settings: dict, chat_user_r
     if not chat_settings.get("blocks", {}).get("forwards") or is_privileged(chat_user_role):
         return False
     if not _is_forwarded(message):
+        return False
+    await delete_message_safely(message)
+    return True
+
+
+# links/usernames/inline раньше только сохранялись в настройках, но нигде не проверялись (issue #43).
+CONTENT_BLOCKS = {
+    "links": lambda m: bool(extract_links(m)),
+    "usernames": lambda m: any(e.type in ("mention", "text_mention") for e in message_entities(m)),
+    "inline": lambda m: m.via_bot is not None,
+}
+
+
+async def check_content_blocks(message: Message, chat_settings: dict, chat_user_role: str) -> bool:
+    cfg = chat_settings.get("blocks", {})
+    if is_privileged(chat_user_role) or not any(cfg.get(k) and has(message) for k, has in CONTENT_BLOCKS.items()):
         return False
     await delete_message_safely(message)
     return True

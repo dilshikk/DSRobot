@@ -1,14 +1,12 @@
 """
-Remove user-data from group (/forget), Remove user-data from bot, User privacy mode.
+Remove user-data from group (/forget), Remove user-data from bot.
 GDPR-подобная функциональность: удаление данных о пользователе. Варны и история
 санкций сохраняются, иначе /forget сбрасывал бы наказания (issue #36).
 """
 from aiogram import Router
-from aiogram.filters import Command, CommandObject
+from aiogram.filters import Command
 from bot.database import SessionFactory
-from bot.filters.roles import HasRole
 from bot.services.privacy_service import forget_user
-from bot.services.settings_service import update_settings
 
 router = Router(name="privacy")
 
@@ -37,15 +35,4 @@ async def forget_me_everywhere(message) -> None:
     await message.answer(
         "\u2705 Ваши данные удалены из базы бота во всех чатах."
         + (" Варны и история санкций сохранены для модераторов чатов." if kept else "")
-    )
-
-
-@router.message(Command("privacymode"), HasRole("admin"))
-async def toggle_privacy_mode(message, chat_settings: dict) -> None:
-    new_state = not chat_settings.get("privacy", {}).get("user_privacy_mode", True)
-    async with SessionFactory() as session:
-        await update_settings(session, message.chat.id, "privacy", {"user_privacy_mode": new_state})
-    await message.answer(
-        f"User privacy mode: {'включён' if new_state else 'выключен'} "
-        f"({'бот хранит минимум данных о участниках' if new_state else 'бот хранит расширенные данные для аналитики'})"
     )

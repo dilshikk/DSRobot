@@ -91,13 +91,8 @@ class FakeSession:
 
 
 def test_night_mode_deletes_voice(deleted, monkeypatch):
-    async def get_chat(session, chat_id, title):
-        return SimpleNamespace(utc_offset=0)
-
-    monkeypatch.setattr(night_mode, "SessionFactory", FakeSession)
-    monkeypatch.setattr(night_mode, "get_or_create_chat", get_chat)
     hour = datetime.utcnow().hour
-    settings = {"night_mode": {"enabled": True, "start_hour": hour, "end_hour": (hour + 1) % 24}}
+    settings = {"utc_offset": 0, "night_mode": {"enabled": True, "start_hour": hour, "end_hour": (hour + 1) % 24}}
     assert _check(night_mode.check_night_mode, _msg(voice=VOICE), settings)
 
 

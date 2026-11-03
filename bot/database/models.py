@@ -79,17 +79,14 @@ class ChatSettings(Base):
         "night_mode": {"enabled": False, "start_hour": 23, "end_hour": 7},
         "blocks": {"forwards": False, "links": False, "usernames": False, "bots": False, "inline": False},
         "media_blocks": {"photo": False, "video": False, "sticker": False, "gif": False, "voice": False, "document": False},
-        "link_settings": {"action": "delete", "allow_admins": True, "whitelist": []},
+        "link_settings": {"action": "delete", "allow_admins": True, "whitelist": [], "mute_minutes": 60},
         "approve_mode": {"enabled": False},
         "message_deletion": {"delete_service_messages": True, "delete_commands_after_sec": 0},
         "warns": {"max_warns": 3, "action": "ban", "mute_minutes": 60},
-        "banned_words": {"action": "delete"},
+        "banned_words": {"action": "delete", "mute_minutes": 60},
         "tag_admin": {"cooldown_sec": 300},
-        "tag_all": {"enabled": False},
         "max_message_length": {"enabled": False, "limit": 4000},
-        "topics": {"enabled": False},
         "alphabets": {"enabled": False, "allowed": ["cyrillic", "latin"]},
-        "privacy": {"user_privacy_mode": True},
     }
 
 

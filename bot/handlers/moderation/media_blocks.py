@@ -20,6 +20,11 @@ MEDIA_MAP = {
     "gif": lambda m: bool(m.animation),
     "voice": lambda m: bool(m.voice),
     "document": lambda m: bool(m.document),
+    "video_note": lambda m: bool(m.video_note),
+    "audio": lambda m: bool(m.audio),
+    "poll": lambda m: bool(m.poll),
+    "contact": lambda m: bool(m.contact),
+    "location": lambda m: bool(m.location or m.venue),
 }
 
 
@@ -31,7 +36,18 @@ async def block_media(message: Message, command: CommandObject, lang: str = "ru"
         return
     async with SessionFactory() as session:
         await update_settings(session, message.chat.id, "media_blocks", {key: True})
-    await message.answer(t(lang, "media_block_on", key=key))
+    await message.answer(t(lang, "media_block_on", name=key))
+
+
+@router.message(Command("unblockmedia"), HasRole("admin"))
+async def unblock_media(message: Message, command: CommandObject, lang: str = "ru") -> None:
+    key = (command.args or "").strip().lower()
+    if key not in MEDIA_MAP:
+        await message.answer(t(lang, "unblockmedia_usage", options=" | ".join(MEDIA_MAP)))
+        return
+    async with SessionFactory() as session:
+        await update_settings(session, message.chat.id, "media_blocks", {key: False})
+    await message.answer(t(lang, "media_block_off", name=key))
 
 
 async def check_media_block(message: Message, chat_settings: dict, chat_user_role: str) -> bool:

@@ -29,7 +29,7 @@ from bot.database.models import BannedWord
 from bot.filters.roles import HasRole
 from bot.services.cache import get_json, redis, set_json
 from bot.services.chat_lang import get_chat_lang
-from bot.services.moderation_actions import apply_sanction
+from bot.services.moderation_actions import apply_sanction, parse_auto_action
 from bot.services.settings_service import update_settings
 from bot.utils.i18n import t
 from bot.utils.permissions import is_privileged
@@ -145,6 +145,20 @@ async def set_word_mode(message: Message, command: CommandObject, lang: str = "r
     await message.answer(word_mode_text(lang, mode))
 
 
+WORD_ACTIONS = ("delete", *SANCTION_ACTIONS)
+
+
+@router.message(Command("wordaction"), HasRole("admin"))
+async def set_word_action(message: Message, command: CommandObject, lang: str = "ru") -> None:
+    values = parse_auto_action(command.args, WORD_ACTIONS)
+    if values is None:
+        await message.answer(t(lang, "word_action_usage"))
+        return
+    async with SessionFactory() as session:
+        await update_settings(session, message.chat.id, "banned_words", values)
+    await message.answer(t(lang, "word_action_set", action=values["action"]))
+
+
 async def check_banned_words(message: Message, chat_settings: dict, chat_user_role: str) -> bool:
     text = message.text or message.caption
     if not text or is_privileged(chat_user_role) or message.from_user is None:
@@ -163,6 +177,8 @@ async def check_banned_words(message: Message, chat_settings: dict, chat_user_ro
     if action in SANCTION_ACTIONS:
         # Проверки из moderation_pipeline не получают handler data, язык берём из кэша.
         lang = await get_chat_lang(message.chat.id)
+        # Мут — на срок, а не навсегда (issue #41).
+        duration = int(cfg.get("mute_minutes", 60)) if action == "mute" else None
         await apply_sanction(message.bot, message.chat.id, message.from_user.id, action,
-                             t(lang, "banned_word_reason"), 0)
+                             t(lang, "banned_word_reason"), 0, duration, lang=lang)
     return True

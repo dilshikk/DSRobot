@@ -60,7 +60,8 @@ class ChatContextMiddleware(BaseMiddleware):
         async with SessionFactory() as session:
             db_chat = await get_or_create_chat(session, chat.id, chat.title or "", chat.type)
             data["lang"] = normalize_lang(db_chat.lang, default_lang)
-            data["chat_settings"] = await get_settings(session, chat.id)
+            # utc_offset — для проверок пайплайна (night mode), чтобы не ходить в БД на каждое сообщение.
+            data["chat_settings"] = {**await get_settings(session, chat.id), "utc_offset": db_chat.utc_offset or 0}
 
             # Анонимный админ приходит от служебного аккаунта GroupAnonymousBot — его не сохраняем.
             if user and not is_anonymous_admin:

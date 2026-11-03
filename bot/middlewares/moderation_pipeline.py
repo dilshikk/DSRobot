@@ -24,6 +24,7 @@ import logging
 from typing import Any, Awaitable, Callable
 
 from aiogram import BaseMiddleware
+from aiogram.enums import ContentType
 from aiogram.types import Message, TelegramObject
 
 from bot.handlers.chat.group_statistics import bump_stat
@@ -42,6 +43,7 @@ MESSAGE_CHECKS: list[Check] = [
     approve_mode.check_unapproved,
     night_mode.check_night_mode,
     blocks.check_forward_block,
+    blocks.check_content_blocks,
     media_blocks.check_media_block,
     anti_nsfw.check_nsfw,
     masked_users.check_masked_links,
@@ -60,8 +62,18 @@ SKIP_ON_EDIT: set[Check] = {antispam.check_duplicate_spam}
 SKIP_ON_COMMAND: set[Check] = {alphabets.check_alphabet}
 
 
+# Всё, что может прислать участник. Остальные типы — служебные (вход, смена названия, видеочат...):
+# night/approve mode удаляют любое не служебное сообщение (issue #40), служебные не трогаем.
+USER_CONTENT_TYPES = {
+    ContentType.TEXT, ContentType.PHOTO, ContentType.VIDEO, ContentType.STICKER, ContentType.ANIMATION,
+    ContentType.VOICE, ContentType.VIDEO_NOTE, ContentType.AUDIO, ContentType.DOCUMENT, ContentType.POLL,
+    ContentType.CONTACT, ContentType.LOCATION, ContentType.VENUE, ContentType.DICE, ContentType.GAME,
+    ContentType.STORY,
+}
+
+
 def _is_service(message: Message) -> bool:
-    return bool(message.new_chat_members or message.left_chat_member or message.pinned_message)
+    return message.content_type not in USER_CONTENT_TYPES
 
 
 def _is_command(message: Message) -> bool:

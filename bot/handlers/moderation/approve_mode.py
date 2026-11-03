@@ -36,6 +36,22 @@ async def approve_user(message: Message, lang: str = "ru") -> None:
     await message.answer(t(lang, "approve_done"))
 
 
+@router.message(Command("unapprove"), HasRole("admin"))
+async def unapprove_user(message: Message, lang: str = "ru") -> None:
+    reply = message.reply_to_message
+    if not reply or not reply.from_user:
+        await message.answer(t(lang, "unapprove_usage"))
+        return
+    async with SessionFactory() as session:
+        cu = (await session.execute(
+            select(ChatUser).where(ChatUser.chat_id == message.chat.id, ChatUser.user_id == reply.from_user.id)
+        )).scalar_one_or_none()
+        if cu is not None:
+            cu.approved = False
+            await session.commit()
+    await message.answer(t(lang, "unapprove_done"))
+
+
 @router.message(Command("approvemode"), HasRole("admin"))
 async def toggle_approve_mode(message: Message, chat_settings: dict, lang: str = "ru") -> None:
     new_state = not chat_settings.get("approve_mode", {}).get("enabled", False)
@@ -46,8 +62,6 @@ async def toggle_approve_mode(message: Message, chat_settings: dict, lang: str =
 
 async def check_unapproved(message: Message, chat_settings: dict, chat_user_role: str) -> bool:
     if not chat_settings.get("approve_mode", {}).get("enabled") or is_privileged(chat_user_role):
-        return False
-    if not (message.text or message.photo or message.video or message.sticker):
         return False
     async with SessionFactory() as session:
         cu = (await session.execute(

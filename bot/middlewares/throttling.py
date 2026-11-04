@@ -8,6 +8,10 @@ Throttling / Rate Limiter middleware — защита от спама коман
 
 issue #34: подключается как inner-middleware (после цепочки модерации), иначе
 вторая быстрая "команда" со спамом отбрасывалась до проверок и оставалась в чате.
+
+issue #98: проверка и установка ключа — одна атомарная команда SET NX PX. Раньше
+EXISTS и SET шли отдельно, и параллельные апдейты (handle_as_tasks) проходили оба.
+Команда определяется так же, как в цепочке модерации (bot.utils.telegram.is_command).
 """
 from __future__ import annotations
 
@@ -17,6 +21,7 @@ from aiogram import BaseMiddleware
 from aiogram.types import Message, TelegramObject
 
 from bot.services.cache import redis
+from bot.utils.telegram import is_command
 
 DEFAULT_RATE_LIMIT_SEC = 1.0
 
@@ -31,12 +36,11 @@ class ThrottlingMiddleware(BaseMiddleware):
         event: TelegramObject,
         data: dict[str, Any],
     ) -> Any:
-        if not isinstance(event, Message) or not event.from_user or not (event.text or "").startswith("/"):
+        if not isinstance(event, Message) or not event.from_user or not is_command(event):
             return await handler(event, data)
 
         key = f"throttle:{event.chat.id}:{event.from_user.id}"
-        if await redis.exists(key):
-            return  # молча игнорируем — команда прилетела слишком быстро
-        await redis.set(key, 1, px=int(self.rate_limit * 1000))
+        if not await redis.set(key, 1, px=int(self.rate_limit * 1000), nx=True):
+            return None  # молча игнорируем — команда прилетела слишком быстро
 
         return await handler(event, data)

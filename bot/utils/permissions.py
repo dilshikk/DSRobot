@@ -48,7 +48,9 @@ COMMAND_PERMISSIONS: dict[str, str] = {
 
 # Команды управления правами: их минимальную роль нельзя изменить через /setcmdperm,
 # иначе можно выдать себе права на редактор прав.
-LOCKED_COMMANDS = frozenset({"setcmdperm", "addrole", "setrole", "promote", "demote"})
+LOCKED_COMMANDS = frozenset({
+    "setcmdperm", "addrole", "setrole", "unsetrole", "delrole", "promote", "demote",
+})
 
 
 def command_name(text: str | None) -> str | None:

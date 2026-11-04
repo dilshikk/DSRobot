@@ -125,6 +125,11 @@
   "role_not_found": "No role with that name was found.",
   "role_exists": "Role «{name}» already exists in this chat.",
   "setrole_done": "✅ Role «{name}» assigned to the user.",
+  "unsetrole_usage": "Reply to the user's message: /unsetrole",
+  "unsetrole_none": "This user has no assigned role.",
+  "unsetrole_done": "✅ Role removed from the user.",
+  "delrole_usage": "Usage: /delrole ROLE_NAME",
+  "delrole_done": "✅ Role «{name}» deleted. Removed from members: {count}.",
 
   "promote_usage": "Reply to the message of the user you want to promote.",
   "promote_done": "⬆️ {mention} is now an administrator.",

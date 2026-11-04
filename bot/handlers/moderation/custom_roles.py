@@ -5,7 +5,7 @@ from html import escape
 from aiogram import Router
 from aiogram.filters import Command, CommandObject
 from aiogram.types import Message
-from sqlalchemy import select
+from sqlalchemy import delete, select, update
 
 from bot.database import SessionFactory
 from bot.database.models import ChatUser, CustomRole
@@ -68,3 +68,62 @@ async def set_role(message: Message, command: CommandObject, lang: str = "ru") -
     # Новая роль действует сразу, а не после истечения кэша.
     await invalidate_role(message.chat.id, target.id)
     await message.answer(t(lang, "setrole_done", name=escape(role_name)))
+
+
+@router.message(Command("unsetrole"), HasRole("admin"))
+async def unset_role(message: Message, lang: str = "ru") -> None:
+    """Ответом на сообщение: /unsetrole — снять с участника custom-роль (issue #43)."""
+    reply = message.reply_to_message
+    if not reply or not reply.from_user or reply.sender_chat:
+        await message.answer(t(lang, "unsetrole_usage"))
+        return
+    target = reply.from_user
+    async with SessionFactory() as session:
+        cu = (await session.execute(
+            select(ChatUser).where(ChatUser.chat_id == message.chat.id, ChatUser.user_id == target.id)
+        )).scalar_one_or_none()
+        if cu is None or cu.custom_role_id is None:
+            await message.answer(t(lang, "unsetrole_none"))
+            return
+        cu.custom_role_id = None
+        if cu.role == "custom":
+            cu.role = "member"
+        await session.commit()
+    await invalidate_role(message.chat.id, target.id)
+    await message.answer(t(lang, "unsetrole_done"))
+
+
+@router.message(Command("delrole"), HasRole("admin"))
+async def del_role(message: Message, command: CommandObject, lang: str = "ru") -> None:
+    """Использование: /delrole <name> — удалить роль и снять её со всех участников (issue #43)."""
+    role_name = (command.args or "").strip()
+    if not role_name:
+        await message.answer(t(lang, "delrole_usage"))
+        return
+    chat_id = message.chat.id
+    async with SessionFactory() as session:
+        # Удаляем все роли с этим именем: дубли могли остаться с прошлых версий.
+        role_ids = list((await session.execute(
+            select(CustomRole.id).where(CustomRole.chat_id == chat_id, CustomRole.name == role_name)
+        )).scalars())
+        if not role_ids:
+            await message.answer(t(lang, "role_not_found"))
+            return
+        holders = list((await session.execute(
+            select(ChatUser.user_id).where(ChatUser.chat_id == chat_id, ChatUser.custom_role_id.in_(role_ids))
+        )).scalars())
+        # Сначала понижаем роль, потом чистим ссылку: иначе FK на custom_roles не даст удалить роль.
+        await session.execute(
+            update(ChatUser)
+            .where(ChatUser.custom_role_id.in_(role_ids), ChatUser.role == "custom")
+            .values(role="member")
+        )
+        await session.execute(
+            update(ChatUser).where(ChatUser.custom_role_id.in_(role_ids)).values(custom_role_id=None)
+        )
+        await session.execute(delete(CustomRole).where(CustomRole.id.in_(role_ids)))
+        await session.commit()
+    # Права роли пропадают сразу, а не после истечения кэша.
+    for user_id in holders:
+        await invalidate_role(chat_id, user_id)
+    await message.answer(t(lang, "delrole_done", name=escape(role_name), count=len(holders)))

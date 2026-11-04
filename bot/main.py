@@ -26,6 +26,7 @@ from bot.middlewares.throttling import ThrottlingMiddleware
 from bot.services import bot_registry
 from bot.services.cache import close_redis
 from bot.services.clone_runner import create_bot, load_clone_bots
+from bot.services.http import close_http
 from bot.services.recurring import restore_recurring_jobs
 from bot.services.scheduler import scheduler, start as start_scheduler
 
@@ -87,10 +88,10 @@ async def prepare_bots_for_polling(bots: Iterable[Bot], drop_pending: bool) -> N
 
 async def shutdown_resources() -> None:
     """
-    Graceful shutdown (issue #13): закрывает пулы Redis и PostgreSQL.
-    Ошибка одного шага не мешает закрыть остальные.
+    Graceful shutdown (issue #13): закрывает общую HTTP-сессию (issue #99), пулы Redis
+    и PostgreSQL. Ошибка одного шага не мешает закрыть остальные.
     """
-    for name, close in (("Redis", close_redis), ("PostgreSQL", close_db)):
+    for name, close in (("HTTP", close_http), ("Redis", close_redis), ("PostgreSQL", close_db)):
         try:
             await close()
         except Exception:

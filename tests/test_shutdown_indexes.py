@@ -77,7 +77,8 @@ def test_shutdown_closes_everything_even_if_one_step_fails(monkeypatch):
         calls.append("redis")
         raise RuntimeError("boom")
 
+    monkeypatch.setattr(bot_main, "close_http", _Recorder(calls, "http"))
     monkeypatch.setattr(bot_main, "close_redis", failing_redis)
     monkeypatch.setattr(bot_main, "close_db", _Recorder(calls, "db"))
     asyncio.run(bot_main.shutdown_resources())
-    assert calls == ["redis", "db"]
+    assert calls == ["http", "redis", "db"]

@@ -9,6 +9,8 @@ ORM-модели.
 
 Структурные данные, которые не являются простыми toggle-флагами
 (варны, роли, забаненные слова, рассылки и т.п.), хранятся в отдельных таблицах.
+
+Изменения схемы оформляются Alembic-ревизиями в database/migrations/versions (issue #13).
 """
 from __future__ import annotations
 
@@ -29,6 +31,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -59,11 +62,12 @@ class Chat(Base):
 
 
 class ChatSettings(Base):
-    """Единый JSON-блоб под все toggle/числовые настройки чата (см. docstring модуля)."""
+    """Единый JSONB-блоб под все toggle/числовые настройки чата (см. docstring модуля)."""
     __tablename__ = "chat_settings"
 
     chat_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("chats.id", ondelete="CASCADE"), primary_key=True)
-    data: Mapped[dict] = mapped_column(JSON, default=dict)
+    # JSONB, а не JSON (issue #13, ревизия 0002_chat_settings_jsonb).
+    data: Mapped[dict] = mapped_column(JSONB, default=dict)
 
     chat: Mapped["Chat"] = relationship(back_populates="settings")
 
@@ -253,7 +257,8 @@ class BotClone(Base):
 
     Токен хранится только зашифрованным (`token_encrypted`, см. services/clone_crypto.py).
     `token_hash` — SHA-256 отпечаток для поиска дублей: шифротекст Fernet каждый раз разный.
-    Миграция со старой колонки `token` (открытый текст) — в database/engine.py.
+    Миграция со старой колонки `token` (открытый текст) — в database/legacy.py
+    (вызывается из Alembic-ревизии 0001_baseline).
     """
     __tablename__ = "bot_clones"
 

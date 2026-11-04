@@ -1,9 +1,9 @@
 """issue #13: индексы под частые запросы и корректное закрытие соединений."""
 import asyncio
 import importlib
-import inspect
 
 from bot import main as bot_main
+from bot.database import legacy
 from bot.services import cache
 
 # Не `from bot.database import engine`: пакет экспортирует объект AsyncEngine с тем же
@@ -21,14 +21,31 @@ class _Recorder:
 
 
 def test_indexes_are_idempotent_and_cover_hot_queries():
-    ddl = " ".join(db_engine.INDEXES_DDL)
-    assert all(stmt.startswith("CREATE INDEX IF NOT EXISTS") for stmt in db_engine.INDEXES_DDL)
+    ddl = " ".join(legacy.INDEXES_DDL)
+    assert all(stmt.startswith("CREATE INDEX IF NOT EXISTS") for stmt in legacy.INDEXES_DDL)
     assert "audit_log (chat_id, created_at)" in ddl
     assert "banned_words (chat_id)" in ddl
+    assert any("chat_users (user_id)" in stmt for stmt in legacy.CHAT_USERS_DDL)
 
 
-def test_init_models_creates_indexes():
-    assert "_create_indexes" in inspect.getsource(db_engine.init_models)
+def test_baseline_creates_indexes():
+    executed = []
+
+    class FakeResult:
+        def scalar(self):
+            return "date"
+
+        def first(self):
+            return None
+
+    class FakeConn:
+        def execute(self, stmt, params=None):
+            executed.append(str(stmt))
+            return FakeResult()
+
+    legacy.run_all(FakeConn())
+    for ddl in legacy.INDEXES_DDL:
+        assert ddl in executed
 
 
 def test_close_db_disposes_engine(monkeypatch):

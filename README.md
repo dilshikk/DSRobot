@@ -4,97 +4,190 @@
 построенный по архитектуре из ТЗ (Gateway → Application Core → Data Persistence →
 Async Workers). Ниже — что реально реализовано, что требует доработки, и как запустить.
 
-## ⚠️ Честно о статусе проекта
+## Функционал
 
-Полноценный клон Rose/Combot — это месяцы работы команды. За один проход я собрал:
+| Функционал | Статус |
+|------------|--------|
+| Roles & permissions hierarchy | ✅ |
+| Custom roles | ✅ |
+| Moderation commands (ban/mute/kick/warn) | ✅ |
+| Channel users moderation | ✅ |
+| Anonymous admins support | ✅ |
+| Bot support / help | ✅ |
+| Bot clones support | 🟡 |
+| UTC time settings | ✅ |
+| Langs and lang settings | ✅ |
+| Rules | ✅ |
+| Welcome / Goodbye | ✅ |
+| Anti-flood | ✅ |
+| Anti-spam | ✅ |
+| Alphabets | ✅ |
+| Captcha (math) | ✅ |
+| Checks settings | ✅ |
+| @Admin tag | ✅ |
+| Blocks (forwards/links/usernames/bots) | ✅ |
+| Media blocks | ✅ |
+| Anti-NSFW | ✅ |
+| Warns settings | ✅ |
+| Night mode | ✅ |
+| Tag settings (@all) | ✅ |
+| Link settings | ✅ |
+| Approve mode | ✅ |
+| Message deletion settings | ✅ |
+| Topics settings | ✅ |
+| Banned words | ✅ |
+| Recurring messages | ✅ |
+| Members management | ✅ |
+| Masked users | ✅ |
+| Discussion group settings | ✅ |
+| Personal commands | ✅ |
+| Magic Stickers/GIFs | ✅ |
+| Max message length | ✅ |
+| Log channel | ✅ |
+| Staff group /report | ✅ |
+| Group statistics | ✅ |
+| Permissions editor | ✅ |
+| /forget, user data removal | ✅ |
+| User privacy mode | ✅ |
+| Crypto prices | ✅ |
 
-- **Полную архитектуру и инфраструктуру**: Docker Compose (bot + PostgreSQL + Redis),
-  модели БД под все ~40 фич, middleware-слой, систему настроек с кэшем в Redis,
-  систему ролей.
-- **Рабочую логику** для большинства модулей (см. таблицу ниже) — не заглушки, а
-  реальный код, который делает то, что написано (проверено `py_compile`, но **не**
-  тестировалось живым запуском — в песочнице нет сети, поэтому `pip install` и запуск
-  против настоящего Telegram API я выполнить не мог).
-- **Явно помеченные точки расширения** там, где нужен внешний сервис с API-ключом,
-  который вы не указывали (конкретный провайдер аналитики и т.п.).
-
-Перед продакшн-использованием: разверните локально, прогоните через реальный чат,
-напишите тесты на критичные пути (санкции, капча, антифлуд).
-
-## Статус по пунктам ТЗ
-
-| # | Фича | Статус |
-|---|------|--------|
-| Roles & permissions hierarchy | ✅ реализовано | `utils/permissions.py`, `filters/roles.py` |
-| Custom roles | ✅ реализовано | `handlers/moderation/custom_roles.py` |
-| Moderation commands (ban/mute/kick/warn) | ✅ реализовано | `handlers/moderation/moderation_commands.py` |
-| Channel users moderation | ✅ базово | `handlers/moderation/channel_moderation.py` |
-| Anonymous admins support | ✅ реализовано | `middlewares/chat_context.py` |
-| Bot support / help | ✅ реализовано | `handlers/core/start_help.py` |
-| Bot clones support | 🟡 CRUD готов, оркестратор процессов — TODO | `handlers/core/clones.py` |
-| UTC time settings | ✅ реализовано | `handlers/core/time_settings.py` |
-| Langs and lang settings | ✅ базово (ru/en) | `handlers/core/lang_settings.py`, `locales/` |
-| Rules | ✅ реализовано | `handlers/welcome/rules.py` |
-| Welcome / Goodbye | ✅ реализовано | `handlers/welcome/` |
-| Anti-flood | ✅ реализовано | `middlewares/antiflood.py` |
-| Anti-spam | ✅ дубликаты, база CAS, правила для новичков | `handlers/moderation/antispam.py`, `handlers/moderation/spam_guard.py` |
-| Alphabets | ✅ реализовано | `handlers/misc/alphabets.py` |
-| Captcha (math) | ✅ реализовано | `handlers/welcome/captcha.py` |
-| Checks settings | ✅ базово (проверка прав бота) | `handlers/chat/checks_settings.py` |
-| @Admin | ✅ реализовано | `handlers/chat/admin_tag.py` |
-| Blocks (forwards/links/usernames/bots) | ✅ реализовано | `handlers/moderation/blocks.py` |
-| Media blocks | ✅ реализовано | `handlers/moderation/media_blocks.py` |
-| Anti-NSFW | ✅ локальная модель NudeNet, без ключей | `handlers/moderation/anti_nsfw.py`, `services/nsfw.py` |
-| Warns settings | ✅ реализовано | `handlers/moderation/warns.py` |
-| Night mode | ✅ реализовано | `handlers/moderation/night_mode.py` |
-| Tag settings (@all) | ✅ реализовано | `handlers/chat/tag_settings.py` |
-| Link settings | ✅ реализовано | `handlers/moderation/link_settings.py` |
-| Approve mode | ✅ реализовано | `handlers/moderation/approve_mode.py` |
-| Message deletion settings | ✅ реализовано | `handlers/moderation/message_deletion.py` |
-| Topics settings | ✅ базово | `handlers/chat/topics_settings.py` |
-| Banned words | ✅ реализовано | `handlers/moderation/banned_words.py` |
-| Recurring messages | ✅ реализовано (APScheduler cron) | `handlers/chat/recurring_messages.py` |
-| Members management | ✅ базово | `handlers/chat/members_management.py` |
-| Masked users (маскированные ссылки) | ✅ реализовано | `handlers/moderation/masked_users.py` |
-| Discussion group settings | ✅ базово | `handlers/chat/discussion_group.py` |
-| Personal commands | ✅ реализовано | `handlers/chat/personal_commands.py` |
-| Magic Stickers/GIFs | ✅ реализовано | `handlers/chat/magic_stickers_gifs.py` |
-| Max message length | ✅ реализовано | `handlers/moderation/max_message_length.py` |
-| Log channel | ✅ реализовано | `handlers/chat/log_channel.py`, `services/moderation_actions.py` |
-| Staff group / /report | ✅ реализовано | `handlers/chat/staff_group.py` |
-| Group statistics | ✅ базово (сообщения/join/leave/санкции по дням) | `handlers/chat/group_statistics.py` |
-| Permissions editor | ✅ базово (мин. роль на команду) | `handlers/chat/permissions_editor.py` |
-| /forget, remove user-data | ✅ реализовано | `handlers/chat/privacy.py` |
-| User privacy mode | ✅ переключатель | `handlers/chat/privacy.py` |
-| Crypto prices | ✅ реализовано (CoinGecko) | `handlers/misc/crypto_prices.py` |
-
-🟡 = работает частично / нужна донастройка с вашей стороны (API-ключ, инфраструктура процессов).
+🟡 = работает частично / нужна донастройка (API-ключ, инфраструктура процессов).
 
 ### Антиспам
 
-Работает, пока включён `/antispam`:
+Команды: `/antispam`, `/setantispam ПОВТОРОВ [МИНУТЫ]`, `/cas on|off`, `/newcomers delete|warn|kick|ban|off|mute [МИНУТЫ]`
 
-- **Дубликаты**: одинаковые сообщения подряд → мут (`/setantispam ПОВТОРОВ [МИНУТ]`).
-- **База CAS** ([Combot Anti-Spam](https://cas.chat), ключ не нужен): известный спамер
-  банится при входе или на первом сообщении. Включение: `/cas on|off` (по умолчанию вкл.).
-  Если CAS недоступен, сообщения пропускаются.
-- **Новички**: первые 3 сообщения за 24 ч. после входа проверяются строже — ссылки не из
-  белого списка (`/allowlink`) удаляются, а @упоминания и пересылки удаляются, если у
-  аккаунта нет ни username, ни аватара. Действие: `/newcomers delete|warn|kick|ban|off|mute [МИНУТ]`.
+- Дубликаты одинаковых сообщений → мут
+- Проверка по базе CAS (Combot Anti-Spam)
+- Строгая проверка первых сообщений новичков
 
 ### Anti-NSFW
 
-Непристойные картинки распознаёт локальная модель [NudeNet](https://github.com/notAI-tech/NudeNet)
-(работает на CPU, ключи и внешние сервисы не нужны). По умолчанию выключено в каждом чате.
+Команды: `/antinsfw`, `/nsfwlevel ПРОЦЕНТ`, `/nsfwaction delete|warn|kick|ban|mute [МИНУТЫ]`
 
-- `/antinsfw` — включить/выключить в чате.
-- `/nsfwlevel ПРОЦЕНТ` (30–95, по умолчанию 60) — с какой уверенности модели удалять картинку.
-- `/nsfwaction delete|warn|kick|ban|mute [МИНУТ]` — что ещё сделать с автором (сообщение удаляется всегда).
-- Проверяются фото, статичные стикеры и картинки-файлы; у видео, GIF, кружков и
-  анимированных стикеров — превью. Сообщения админов не проверяются.
-- Оценка картинки кэшируется в Redis на неделю: пересланная по чатам картинка проверяется один раз.
-- На слабом сервере модель можно не загружать: `NSFW_ENABLED=false` в `.env`.
-  Если модель недоступна, сообщения просто пропускаются.
+- Локальная модель NudeNet (работает на CPU, без ключей)
+- Проверка фото, стикеров и картинок
+- Оценка кэшируется в Redis
+
+## Команды бота
+
+### Core
+
+| Команда | Описание | Роль |
+|---------|----------|------|
+| `/start` | Запуск бота, показ помощи | member |
+| `/help` | Основные разделы команд | member |
+| `/commands` | Полный список команд | member |
+| `/addclone <token>` | Регистрация клона бота | member |
+| `/myclones` | Список клонированных ботов | member |
+| `/delclone <id>` | Удаление клона | member |
+| `/setlang <lang>` | Язык бота в чате | admin |
+| `/setutc <offset>` | Часовой пояс чата | admin |
+
+### Moderation
+
+| Команда | Описание | Роль |
+|---------|----------|------|
+| `/ban [reason]` | Забанить пользователя | admin |
+| `/unban` | Разбанить пользователя | admin |
+| `/kick [reason]` | Удалить (может вернуться) | admin |
+| `/mute [dur] [reason]` | Отключить сообщения | admin |
+| `/unmute` | Вернуть права на сообщения | admin |
+| `/warn [reason]` | Предупреждение | admin |
+| `/unwarn` | Снять предупреждение | admin |
+| `/setwarnlimit <num>` | Лимит предупреждений | admin |
+| `/setwarnaction <ban\|kick\|mute>` | Авто-действие при лимите | admin |
+| `/promote` | Повысить до админа | owner |
+| `/demote` | Понизить админа | owner |
+| `/addrole <name> <perms>` | Создать кастомную роль | admin |
+| `/setrole <role>` | Назначить роль | admin |
+| `/unsetrole` | Снять роль | admin |
+| `/delrole <name>` | Удалить роль | admin |
+| `/setcmdperm <cmd> <role>` | Мин. роль для команды | owner |
+| `/antispam` | Вкл/выкл антиспам | admin |
+| `/setantispam <repeats> [min]` | Настройка антиспама | admin |
+| `/cas on\|off` | Проверка по базе CAS | admin |
+| `/newcomers <action> [min]` | Действие для новичков | admin |
+| `/setflood <msgs> <sec> [action] [min]` | Anti-flood настройка | admin |
+| `/floodoff` | Выключить anti-flood | admin |
+| `/addword <word>` | Добавить в чёрный список | admin |
+| `/delword <word>` | Удалить из чёрного списка | admin |
+| `/words` | Список запрещённых слов | admin |
+| `/wordmode <word\|substring>` | Режим поиска слов | admin |
+| `/wordaction <delete\|warn\|kick\|ban\|mute>` | Действие за слова | admin |
+| `/linkaction <delete\|warn\|ban\|mute\|off>` | Действие на ссылки | admin |
+| `/allowlink <domain>` | Белый список доменов | admin |
+| `/denylink <domain>` | Удалить из белого списка | admin |
+| `/linkadmins on\|off` | Ссылки админов | admin |
+| `/block <type>` | Включить блокировку | admin |
+| `/unblock <type>` | Выключить блокировку | admin |
+| `/blockmedia <type>` | Блокировка медиа | admin |
+| `/unblockmedia <type>` | Разблокировка медиа | admin |
+| `/maskedlinks` | Фильтр замаскированных ссылок | admin |
+| `/antinsfw` | Вкл/выкл Anti-NSFW | admin |
+| `/nsfwlevel <percent>` | Порог NSFW | admin |
+| `/nsfwaction <delete\|warn\|kick\|ban\|mute>` | Действие за NSFW | admin |
+| `/cleanservice` | Удаление service-сообщений | admin |
+| `/delcommands <sec>` | Автоудаление команд | admin |
+| `/setmaxlen <chars>` | Макс. длина сообщения | admin |
+| `/nightmode <start> <end>\|off` | Ночной режим | admin |
+| `/approve` | Одобрить пользователя | admin |
+| `/unapprove` | Снять одобрение | admin |
+| `/approvemode` | Вкл/выкл режим одобрения | admin |
+| `/banchannel` | Забанить канал | admin |
+| `/setalphabet <types>\|off` | Фильтр алфавитов | admin |
+
+### Welcome
+
+| Команда | Описание | Роль |
+|---------|----------|------|
+| `/setrules <text>` | Правила чата | admin |
+| `/rules` | Показать правила | member |
+| `/setwelcome <text>` | Приветствие | admin |
+| `/welcomeoff` | Выключить приветствие | admin |
+| `/welcomeclean on\|off` | Удаление старого приветствия | admin |
+| `/setgoodbye <text>` | Прощание | admin |
+| `/goodbyeoff` | Выключить прощание | admin |
+| `/captcha` | Вкл/выкл капчу | admin |
+| `/captchatimeout <sec>` | Таймаут капчи | admin |
+| `/captchakick on\|off` | Исключение при провале капчи | admin |
+
+### Chat
+
+| Команда | Описание | Роль |
+|---------|----------|------|
+| `/addnote #trigger text` | Создать заметку | admin |
+| `/delnote #trigger` | Удалить заметку | admin |
+| `/notes` | Список заметок | member |
+| `/admin` | @упоминание админов | member |
+| `/admincooldown <sec>` | Кулдаун /admin | admin |
+| `/stats [today\|week\|month]` | Статистика группы | admin |
+| `/members` | Количество участников | admin |
+| `/inactive [days]` | Неактивные участники | admin |
+| `/forget` | Удалить данные (этот чат) | member |
+| `/forgetme` | Удалить данные (все чаты) | member |
+| `/addrecurring <cron> text` | Регулярное сообщение | admin |
+| `/delrecurring <id>` | Удалить рассылку | admin |
+| `/recurring` | Список рассылок | member |
+| `/report` | Отчёт в staff-группу | member |
+| `/tagall [text]` | @упоминание всех | admin |
+| `/checkperms` | Проверка прав бота | member |
+| `/addmagic keyword` | Magic sticker/GIF | admin |
+| `/delmagic keyword` | Удалить magic response | admin |
+| `/linkdiscussion <id>` | Discussion group | owner |
+| `/setlogchannel <id>` | Лог-канал | owner |
+| `/newtopic <name>` | Создать тему (forum) | admin |
+| `/closetopic` | Закрыть тему | admin |
+| `/locktopic <type>` | Заблокировать в теме | admin |
+| `/unlocktopic <type>` | Разблокировать в теме | admin |
+| `/topiclocks` | Локи в теме | admin |
+
+### Misc
+
+| Команда | Описание | Роль |
+|---------|----------|------|
+| `/price <coin>` | Цена криптовалюты | member |
+| `/whoami` | Текущая роль / анонимность | member |
 
 ## Архитектурные решения
 
@@ -137,40 +230,84 @@ python -m bot.main
 
 ```bash
 pip install -r requirements-dev.txt
-pytest
+pytest                    # все 40+ тестов
+pytest tests/test_foo.py  # конкретный тест
+pytest -v                 # подробный вывод
 ```
 
-PostgreSQL и Redis для тестов не нужны: `tests/conftest.py` подменяет их в памяти.
+PostgreSQL и Redis для тестов не нужны: `tests/conftest.py` подменяет их InMemory-заглушками.
+
+## CI
+
+GitHub Actions (`.github/workflows/ci.yml`) запускает:
+- `ruff check` — проверка критических ошибок (E9, F63, F7, F82)
+- `pytest -q` — тесты
+- `docker build` — проверка сборки Docker
 
 ## Структура проекта
 
 ```
 bot/
-  config.py              # Pydantic-настройки из .env
-  main.py                # Точка входа: Dispatcher, middleware, polling
+  config.py                    # Pydantic-настройки из .env
+  main.py                      # Точка входа: Dispatcher, middleware, polling
   database/
-    models.py             # Все ORM-модели
-    engine.py              # Async engine/session, запуск Alembic
-    migrations/             # Alembic-ревизии
+    models.py                   # Все ORM-модели
+    engine.py                   # Async engine/session, запуск Alembic
+    legacy.py                   # Миграция старых данных
+    migrations/                 # Alembic-ревизии
   middlewares/
-    chat_context.py         # Роль пользователя + настройки чата
-    throttling.py            # Rate limit на команды
-    antiflood.py              # Anti-flood фильтр сообщений
-  filters/roles.py         # HasRole("admin"|"owner"|...)
+    chat_context.py             # Роль пользователя + настройки чата
+    throttling.py               # Rate limit на команды
+    antiflood.py                # Anti-flood фильтр сообщений
+    moderation_pipeline.py      # Модерация сообщений
+    callback_context.py         # Контекст для callback-кнопок
+  filters/
+    roles.py                    # HasRole("admin"|"owner"|...)
   services/
-    settings_service.py    # CRUD настроек чата + кэш
-    moderation_actions.py    # Единая точка ban/mute/kick/warn
-    scheduler.py               # APScheduler (отложенные/cron задачи)
-    cache.py                     # Redis-обёртка
-    cas.py                        # Проверка по базе Combot Anti-Spam
-    nsfw.py                        # Anti-NSFW: локальная модель NudeNet
-  handlers/               # ~40 роутеров, сгруппированных по core/moderation/welcome/chat/misc
-  locales/                # ru.json, en.json
-tests/                    # pytest, без внешних сервисов
+    settings_service.py         # CRUD настроек чата + кэш
+    moderation_actions.py       # Единая точка ban/mute/kick/warn
+    scheduler.py                # APScheduler (отложенные/cron задачи)
+    cache.py                    # Redis-обёртка
+    cas.py                      # Проверка по базе Combot Anti-Spam
+    nsfw.py                     # Anti-NSFW: локальная модель NudeNet
+    roles.py                    # Иерархия ролей
+    user_service.py             # Сервис пользователей
+    privacy_service.py          # GDPR-данные
+    recurring.py                # Регулярные сообщения
+    triggers.py                 # Триггеры-ответы
+    bot_registry.py             # Реестр ботов-клонов
+    chat_binding.py             # Привязка каналов
+    chat_lang.py                # Язык чата
+    clone_crypto.py             # Шифрование токенов клонов
+    clone_runner.py             # Запуск клонов
+    moderation_targets.py       # Цели модерации
+  handlers/                     # ~82 команды, сгруппированные по категориям
+    core/                       # start, help, clones, lang, time
+    moderation/                 # ban, mute, warn, spam, blocks, nsfw
+    welcome/                    # rules, welcome, goodbye, captcha
+    chat/                       # stats, members, notes, recurring, topics
+    misc/                       # crypto, alphabets
+  locales/
+    ru.json                     # Русский язык
+    en.json                     # English
+  utils/
+    i18n.py                     # Интернационализация
+    parsing.py                  # Парсинг текста
+    permissions.py              # Проверка прав
+    telegram.py                 # Telegram API утилиты
+    text_match.py               # Сравнение текстов
+    text_template.py            # Шаблоны текста
+    html_fallback.py            # Fallback для HTML
+
+tests/                          # 40+ тестов (pytest)
 docker-compose.yml
+docker-compose.dev.yml
 Dockerfile
 requirements.txt
+requirements-dev.txt
+alembic.ini
 .env.example
+.github/workflows/ci.yml
 ```
 
 ## Что стоит сделать дальше (приоритеты)

@@ -197,5 +197,11 @@
   "sanction_failed": "The action failed because of a Telegram error. Please try again.",
 
   "tagall_empty": "The member list is empty (the bot hasn't indexed this chat yet).",
-  "tagall_busy": "Mention-all was run recently. You can repeat it in {minutes} min."
+  "tagall_busy": "Mention-all was run recently. You can repeat it in {minutes} min.",
+
+  "price_usage": "Usage: /price COIN [CURRENCY]\nExample: /price btc or /price eth eur",
+  "price_bad_currency": "Unknown currency. Available: {currencies}",
+  "price_not_found": "Coin not found. Example: /price btc",
+  "price_unavailable": "⚠️ Couldn't get the price (the service is unavailable). Please try again in a minute.",
+  "price_result": "💱 {coin}: {price}"
 }

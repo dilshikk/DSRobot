@@ -194,5 +194,8 @@
   "sanction_user_not_found": "User not found in this chat.",
   "sanction_rejected": "Telegram rejected the action: {error}",
   "sanction_forbidden": "The bot can't perform this action: it was removed from the chat or lost its rights.",
-  "sanction_failed": "The action failed because of a Telegram error. Please try again."
+  "sanction_failed": "The action failed because of a Telegram error. Please try again.",
+
+  "tagall_empty": "The member list is empty (the bot hasn't indexed this chat yet).",
+  "tagall_busy": "Mention-all was run recently. You can repeat it in {minutes} min."
 }

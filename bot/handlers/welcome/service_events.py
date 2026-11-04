@@ -5,7 +5,8 @@
 welcome, captcha, group_statistics), но aiogram вызывает только первый подходящий —
 поэтому капча и приветствие не срабатывали. Здесь всё выполняется по порядку:
 
-вступление: блок ботов → режим одобрения → капча → приветствие → статистика → удаление служебного сообщения
+вступление: блок ботов → бан по базе CAS → режим одобрения → капча → приветствие →
+            отметка новичков → статистика → удаление служебного сообщения
 выход:      прощание → отметка о выходе → статистика → удаление служебного сообщения
 закреп:     удаление служебного сообщения
 
@@ -13,6 +14,8 @@ issue #12: капча, приветствие и прощание пишутся
 issue #50: при включённом режиме одобрения новички помечаются как ждущие одобрения.
 issue #47: вышедший участник отмечается в ChatUser.left_at и не попадает в /inactive и /tagall;
 статистика считается по часовому поясу чата.
+issue #14: аккаунты из базы CAS банятся сразу, без капчи и приветствия; остальные
+вошедшие отмечаются как новички для строгой проверки первых сообщений (spam_guard.py).
 """
 from __future__ import annotations
 
@@ -27,6 +30,7 @@ from bot.handlers.chat.group_statistics import bump_stat
 from bot.handlers.moderation.approve_mode import mark_new_members_pending
 from bot.handlers.moderation.blocks import kick_blocked_bots
 from bot.handlers.moderation.message_deletion import delete_service_message
+from bot.handlers.moderation.spam_guard import ban_cas_members, mark_newcomers
 from bot.handlers.welcome.captcha import start_captcha
 from bot.handlers.welcome.goodbye import farewell
 from bot.handlers.welcome.welcome import greet_members
@@ -61,6 +65,9 @@ async def on_members_joined(message: Message, chat_settings: dict | None = None,
         remaining = message.new_chat_members
     humans = [m for m in remaining if not m.is_bot]
 
+    banned = set(await _safe(ban_cas_members(bot, chat_id, settings, humans, lang=lang), "cas") or [])
+    humans = [m for m in humans if m.id not in banned]
+
     await _safe(mark_new_members_pending(chat_id, settings, humans), "approve_mode")
 
     in_captcha = await _safe(start_captcha(bot, chat_id, settings, humans, lang=lang), "captcha") or []
@@ -68,6 +75,7 @@ async def on_members_joined(message: Message, chat_settings: dict | None = None,
     to_greet = [m for m in humans if m.id not in set(in_captcha)]
     await _safe(greet_members(bot, chat_id, settings, to_greet, lang=lang), "welcome")
 
+    await _safe(mark_newcomers(chat_id, settings, humans), "newcomers")
     await _safe(bump_stat(chat_id, "joins_count", utc_offset=settings.get("utc_offset", 0)), "stats")
     await _safe(delete_service_message(message, settings), "cleanup")
 

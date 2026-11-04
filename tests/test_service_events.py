@@ -1,13 +1,16 @@
 """Регрессионные тесты для issue #1: при вступлении в чат выполняются все шаги
-(блок ботов → капча → приветствие → статистика → удаление), а не только первый.
+(блок ботов → CAS → капча → приветствие → новички → статистика → удаление), а не только первый.
 issue #12: язык чата доходит до капчи, приветствия и прощания.
-issue #47: вышедший участник отмечается, статистика идёт по часовому поясу чата."""
+issue #47: вышедший участник отмечается, статистика идёт по часовому поясу чата.
+issue #14: аккаунты из базы CAS банятся без капчи и приветствия."""
 import asyncio
 from types import SimpleNamespace
 
 import pytest
 
 from bot.handlers.welcome import service_events as se
+
+JOIN_STEPS = ["blocks", "cas", "captcha", "welcome", "newcomers", "stats", "cleanup"]
 
 
 def _user(uid: int, is_bot: bool = False):
@@ -22,6 +25,10 @@ def calls(monkeypatch):
         log.append(("blocks", [m.id for m in members]))
         return [m for m in members if m.id != 999]  # 999 — заблокированный бот
 
+    async def ban_cas_members(bot, chat_id, settings, members, lang="ru"):
+        log.append(("cas", [m.id for m in members]))
+        return [3]  # пользователь 3 — в базе CAS
+
     async def start_captcha(bot, chat_id, settings, humans, lang="ru"):
         log.append(("captcha", [m.id for m in humans]))
         log.append(("captcha_lang", lang))
@@ -30,6 +37,9 @@ def calls(monkeypatch):
     async def greet_members(bot, chat_id, settings, members, lang="ru"):
         log.append(("welcome", [m.id for m in members]))
         log.append(("welcome_lang", lang))
+
+    async def mark_newcomers(chat_id, settings, members):
+        log.append(("newcomers", [m.id for m in members]))
 
     async def farewell(bot, chat_id, settings, member, lang="ru"):
         log.append(("goodbye", member.id))
@@ -47,8 +57,10 @@ def calls(monkeypatch):
 
     for name, fn in {
         "kick_blocked_bots": kick_blocked_bots,
+        "ban_cas_members": ban_cas_members,
         "start_captcha": start_captcha,
         "greet_members": greet_members,
+        "mark_newcomers": mark_newcomers,
         "farewell": farewell,
         "bump_stat": bump_stat,
         "delete_service_message": delete_service_message,
@@ -71,11 +83,23 @@ def test_join_runs_every_step_in_order(calls):
 
     asyncio.run(se.on_members_joined(msg, chat_settings={}))
 
-    assert _steps(calls) == ["blocks", "captcha", "welcome", "stats", "cleanup"]
+    assert _steps(calls) == JOIN_STEPS
     assert ("captcha", [1, 2]) in calls
     # пользователь на капче приветствуется позже, после её прохождения
     assert ("welcome", [1]) in calls
+    assert ("newcomers", [1, 2]) in calls
     assert ("stats", "joins_count") in calls
+
+
+def test_cas_listed_member_skips_captcha_welcome_and_newcomer_mark(calls):
+    msg = _join_message(_user(1), _user(3))
+
+    asyncio.run(se.on_members_joined(msg, chat_settings={}))
+
+    assert ("cas", [1, 3]) in calls
+    assert ("captcha", [1]) in calls
+    assert ("welcome", [1]) in calls
+    assert ("newcomers", [1]) in calls
 
 
 def test_chat_language_reaches_captcha_and_welcome(calls):
@@ -116,8 +140,19 @@ def test_failing_step_does_not_cancel_the_rest(calls, monkeypatch):
 
     asyncio.run(se.on_members_joined(msg, chat_settings={}))
 
-    assert _steps(calls) == ["blocks", "captcha", "welcome", "stats", "cleanup"]
+    assert _steps(calls) == JOIN_STEPS
     assert ("welcome", [1]) in calls
+
+
+def test_failing_cas_step_keeps_everyone(calls, monkeypatch):
+    async def broken_cas(*args, **kwargs):
+        calls.append(("cas",))
+        raise RuntimeError("CAS down")
+
+    monkeypatch.setattr(se, "ban_cas_members", broken_cas)
+    asyncio.run(se.on_members_joined(_join_message(_user(1), _user(3)), chat_settings={}))
+
+    assert ("captcha", [1, 3]) in calls
 
 
 def test_only_service_events_router_handles_new_members():

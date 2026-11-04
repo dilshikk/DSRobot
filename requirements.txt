@@ -7,7 +7,7 @@ APScheduler==3.10.4
 aiohttp==3.9.5
 pydantic==2.7.1
 pydantic-settings==2.2.1
-python-dotenv==1.0.1
+python-dotenv==1.2.4
 Babel==2.15.0
 cryptography==43.0.1
 sentry-sdk==2.18.0

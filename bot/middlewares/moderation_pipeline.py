@@ -19,6 +19,8 @@ issue #34: команды тоже проходят проверки. Раньш
 сразу уходил в хендлеры, и "/ купить https://spam.ru" обходил все фильтры.
 
 issue #47: в статистику попадают и медиа без текста; день считается по часовому поясу чата.
+
+issue #43: блокировки контента по форум-топикам (TopicSettings.locked_features).
 """
 from __future__ import annotations
 
@@ -29,6 +31,7 @@ from aiogram import BaseMiddleware
 from aiogram.enums import ContentType
 from aiogram.types import Message, TelegramObject
 
+from bot.handlers.chat import topics_settings
 from bot.handlers.chat.group_statistics import bump_stat
 from bot.handlers.misc import alphabets
 from bot.handlers.moderation import (
@@ -47,6 +50,7 @@ MESSAGE_CHECKS: list[Check] = [
     blocks.check_forward_block,
     blocks.check_content_blocks,
     media_blocks.check_media_block,
+    topics_settings.check_topic_locks,
     anti_nsfw.check_nsfw,
     masked_users.check_masked_links,
     link_settings.check_links,
@@ -60,8 +64,9 @@ MESSAGE_CHECKS: list[Check] = [
 SKIP_ON_EDIT: set[Check] = {antispam.check_duplicate_spam}
 
 # Проверки, которые не применяются к командам: в чате с ограничением алфавита
-# латинская команда (/price btc) удалялась бы всегда.
-SKIP_ON_COMMAND: set[Check] = {alphabets.check_alphabet}
+# латинская команда (/price btc) удалялась бы всегда. Блокировка текста в топике
+# не должна мешать админам вызывать /unlocktopic (участникам команды и так не нужны).
+SKIP_ON_COMMAND: set[Check] = {alphabets.check_alphabet, topics_settings.check_topic_locks}
 
 
 # Всё, что может прислать участник. Остальные типы — служебные (вход, смена названия, видеочат...):

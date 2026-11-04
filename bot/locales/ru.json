@@ -100,6 +100,13 @@
   "antispam_reason": "Antispam: повторяющиеся сообщения",
   "antispam_usage": "Использование: /setantispam ПОВТОРОВ [МИНУТ_МУТА]\nПовторов — от {min} до {max}, минут — от 1 до {max_minutes} (по умолчанию 30).",
   "antispam_set": "✅ Антиспам: мут на {minutes} мин. после {threshold} одинаковых сообщений подряд.",
+  "cas_reason": "Antispam: аккаунт в базе спамеров CAS",
+  "cas_usage": "Использование: /cas on | off\nПроверка по общей базе спамеров Combot Anti-Spam: известных спамеров бот банит сразу.",
+  "cas_on": "✅ Проверка по базе CAS включена.",
+  "cas_off": "✅ Проверка по базе CAS выключена.",
+  "newcomers_usage": "Использование: /newcomers delete | warn | kick | ban | off | mute [минуты, по умолчанию 60]\nПервые {messages} сообщения новичка за {hours} ч. после входа проверяются строже: ссылки не из белого списка удаляются, а @упоминания и пересылки — если у аккаунта нет ни username, ни аватара.",
+  "newcomers_set": "✅ Действие за спам от новичков: {action}",
+  "newcomer_reason": "Antispam: реклама от нового участника",
 
   "block_usage": "Использование: /block {options}",
   "unblock_usage": "Использование: /unblock {options}",

@@ -73,13 +73,15 @@ class ChatSettings(Base):
 
     # Значения по умолчанию, применяются при первом создании записи (см. services/settings.py)
     # Пустой text у welcome/goodbye = стандартный текст на языке чата (issue #12).
+    # antispam.cas и newcomers — база CAS и правила для новичков (issue #14, handlers/moderation/spam_guard.py).
     DEFAULTS = {
         "welcome": {"enabled": True, "text": "", "clean_old": True},
         "goodbye": {"enabled": False, "text": ""},
         "rules": {"text": ""},
         "captcha": {"mode": "math", "timeout_sec": 120, "kick_on_fail": True},
         "antiflood": {"enabled": True, "max_messages": 7, "per_seconds": 8, "action": "mute"},
-        "antispam": {"enabled": True},
+        "antispam": {"enabled": True, "cas": True},
+        "newcomers": {"action": "delete", "messages": 3, "hours": 24, "mute_minutes": 60},
         "anti_nsfw": {"enabled": False},
         "night_mode": {"enabled": False, "start_hour": 23, "end_hour": 7},
         "blocks": {"forwards": False, "links": False, "usernames": False, "bots": False, "inline": False},

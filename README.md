@@ -16,7 +16,7 @@ Async Workers). Ниже — что реально реализовано, чт�
   тестировалось живым запуском — в песочнице нет сети, поэтому `pip install` и запуск
   против настоящего Telegram API я выполнить не мог).
 - **Явно помеченные точки расширения** там, где нужен внешний сервис с API-ключом,
-  который вы не указывали (anti-NSFW классификатор, конкретный провайдер аналитики и т.п.).
+  который вы не указывали (конкретный провайдер аналитики и т.п.).
 
 Перед продакшн-использованием: разверните локально, прогоните через реальный чат,
 напишите тесты на критичные пути (санкции, капча, антифлуд).
@@ -44,7 +44,7 @@ Async Workers). Ниже — что реально реализовано, чт�
 | @Admin | ✅ реализовано | `handlers/chat/admin_tag.py` |
 | Blocks (forwards/links/usernames/bots) | ✅ реализовано | `handlers/moderation/blocks.py` |
 | Media blocks | ✅ реализовано | `handlers/moderation/media_blocks.py` |
-| Anti-NSFW | 🟡 переключатель готов, классификатор изображений — TODO (нужен провайдер) | `handlers/moderation/anti_nsfw.py` |
+| Anti-NSFW | ✅ локальная модель NudeNet, без ключей | `handlers/moderation/anti_nsfw.py`, `services/nsfw.py` |
 | Warns settings | ✅ реализовано | `handlers/moderation/warns.py` |
 | Night mode | ✅ реализовано | `handlers/moderation/night_mode.py` |
 | Tag settings (@all) | ✅ реализовано | `handlers/chat/tag_settings.py` |
@@ -82,6 +82,20 @@ Async Workers). Ниже — что реально реализовано, чт�
   белого списка (`/allowlink`) удаляются, а @упоминания и пересылки удаляются, если у
   аккаунта нет ни username, ни аватара. Действие: `/newcomers delete|warn|kick|ban|off|mute [МИНУТ]`.
 
+### Anti-NSFW
+
+Непристойные картинки распознаёт локальная модель [NudeNet](https://github.com/notAI-tech/NudeNet)
+(работает на CPU, ключи и внешние сервисы не нужны). По умолчанию выключено в каждом чате.
+
+- `/antinsfw` — включить/выключить в чате.
+- `/nsfwlevel ПРОЦЕНТ` (30–95, по умолчанию 60) — с какой уверенности модели удалять картинку.
+- `/nsfwaction delete|warn|kick|ban|mute [МИНУТ]` — что ещё сделать с автором (сообщение удаляется всегда).
+- Проверяются фото, статичные стикеры и картинки-файлы; у видео, GIF, кружков и
+  анимированных стикеров — превью. Сообщения админов не проверяются.
+- Оценка картинки кэшируется в Redis на неделю: пересланная по чатам картинка проверяется один раз.
+- На слабом сервере модель можно не загружать: `NSFW_ENABLED=false` в `.env`.
+  Если модель недоступна, сообщения просто пропускаются.
+
 ## Архитектурные решения
 
 - **Одна таблица `chat_settings` (JSONB)** вместо ~40 отдельных таблиц под каждый toggle
@@ -90,7 +104,7 @@ Async Workers). Ниже — что реально реализовано, чт�
 - **Кэш настроек в Redis** (`services/settings_service.py`) — TTL 5 минут, чтобы не
   ходить в PostgreSQL на каждое сообщение (см. "Chat Context Middleware" в исходном ТЗ).
 - **Единая точка применения санкций** (`services/moderation_actions.py`) — и команды,
-  и авто-модули (antiflood, antispam, banned_words) идут через неё, что даёт
+  и авто-модули (antiflood, antispam, banned_words, anti_nsfw) идут через неё, что даёт
   консистентный AuditLog и лог-канал "из коробки".
 
 ## Запуск
@@ -149,6 +163,7 @@ bot/
     scheduler.py               # APScheduler (отложенные/cron задачи)
     cache.py                     # Redis-обёртка
     cas.py                        # Проверка по базе Combot Anti-Spam
+    nsfw.py                        # Anti-NSFW: локальная модель NudeNet
   handlers/               # ~40 роутеров, сгруппированных по core/moderation/welcome/chat/misc
   locales/                # ru.json, en.json
 tests/                    # pytest, без внешних сервисов
@@ -162,8 +177,6 @@ requirements.txt
 
 1. Прогнать через реальный тестовый чат — поймать edge-кейсы Telegram API (права бота,
    лимиты).
-2. Подключить провайдера anti-NSFW (Sightengine/AWS Rekognition) — точка расширения
-   уже готова в `handlers/moderation/anti_nsfw.py`.
-3. Оркестратор процессов для bot-clones (сейчас только хранение токенов в БД).
-4. UI-панель настроек через inline-кнопки (`/settings`) — сейчас конфигурация только
+2. Оркестратор процессов для bot-clones (сейчас только хранение токенов в БД).
+3. UI-панель настроек через inline-кнопки (`/settings`) — сейчас конфигурация только
    командами.

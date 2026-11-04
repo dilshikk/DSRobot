@@ -56,6 +56,9 @@ class Settings(BaseSettings):
     crypto_api_url: str = "https://api.coingecko.com/api/v3/simple/price"
     # Combot Anti-Spam: база известных спамеров (issue #14). Ключ не нужен.
     cas_api_url: str = "https://api.cas.chat/check"
+    # Anti-NSFW: локальная модель NudeNet (issue #14). false — модель не загружается
+    # (например, на слабом сервере), /antinsfw тогда ничего не удаляет.
+    nsfw_enabled: bool = True
 
     @property
     def clone_allowed_ids(self) -> set[int]:

@@ -25,9 +25,10 @@ def test_toggle_text_follows_chat_language():
     assert toggle_text("ru", "feature_antispam", True) == "Антиспам: вкл."
 
 
-def test_nsfw_warning_only_when_enabled():
-    assert ".env" in nsfw_toggle_text("en", True)
-    assert ".env" not in nsfw_toggle_text("en", False)
+def test_nsfw_warning_only_when_enabled_without_model():
+    assert "NSFW_ENABLED" in nsfw_toggle_text("en", True, available=False)
+    assert "NSFW_ENABLED" not in nsfw_toggle_text("en", True, available=True)
+    assert "NSFW_ENABLED" not in nsfw_toggle_text("en", False, available=False)
 
 
 def test_block_usage_lists_options_in_stable_order():

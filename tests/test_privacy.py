@@ -32,6 +32,11 @@ def _deletes(session):
     return [s for s in session.sql if s.startswith("DELETE")]
 
 
+def _chat_user_deletes(session):
+    # issue #92: /forget также удаляет user_message_stats — это проверяется в test_stats_period_top.py.
+    return [s for s in _deletes(session) if s.startswith("DELETE FROM chat_users")]
+
+
 def test_forget_keeps_audit_log_and_warned_chat_user():
     session = FakeSession(moderated_chats=[-100])
 
@@ -39,7 +44,7 @@ def test_forget_keeps_audit_log_and_warned_chat_user():
 
     assert kept is True
     assert not any("audit_log" in s for s in _deletes(session))
-    (chat_user_delete,) = _deletes(session)
+    (chat_user_delete,) = _chat_user_deletes(session)
     assert "chat_users.user_id = 42" in chat_user_delete
     assert "NOT IN (-100)" in chat_user_delete
 
@@ -50,7 +55,7 @@ def test_forget_without_history_deletes_chat_user_and_anonymizes():
     kept = asyncio.run(forget_user(session, 42, -100))
 
     assert kept is False
-    (chat_user_delete,) = _deletes(session)
+    (chat_user_delete,) = _chat_user_deletes(session)
     assert "chat_users.chat_id = -100" in chat_user_delete and "NOT IN" not in chat_user_delete
     assert any(s.startswith("UPDATE users") and "username=NULL" in s for s in session.sql)
 
@@ -59,6 +64,6 @@ def test_forgetme_everywhere_keeps_moderated_chats():
     session = FakeSession(moderated_chats=[-100, -200])
 
     assert asyncio.run(forget_user(session, 42)) is True
-    (chat_user_delete,) = _deletes(session)
+    (chat_user_delete,) = _chat_user_deletes(session)
     assert "chat_users.chat_id =" not in chat_user_delete
     assert "NOT IN (-100, -200)" in chat_user_delete or "NOT IN (-200, -100)" in chat_user_delete

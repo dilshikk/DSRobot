@@ -20,6 +20,8 @@ issue #34: команды тоже проходят проверки. Раньш
 
 issue #47: в статистику попадают и медиа без текста; день считается по часовому поясу чата.
 
+issue #92: вместе с общим счётчиком считается и счётчик автора (топ активных в /stats).
+
 issue #43: блокировки контента по форум-топикам (TopicSettings.locked_features).
 
 issue #14: база CAS (первой: известного спамера баним сразу) и правила для новичков
@@ -35,12 +37,12 @@ from aiogram.enums import ContentType
 from aiogram.types import Message, TelegramObject
 
 from bot.handlers.chat import topics_settings
-from bot.handlers.chat.group_statistics import bump_stat
 from bot.handlers.misc import alphabets
 from bot.handlers.moderation import (
     anti_nsfw, antispam, approve_mode, banned_words, blocks, link_settings,
     masked_users, max_message_length, media_blocks, message_deletion, night_mode, spam_guard,
 )
+from bot.services.stats import bump_message_stats
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +95,13 @@ def _is_command(message: Message) -> bool:
     return any(e.type == "bot_command" and e.offset == 0 for e in (message.entities or []))
 
 
+def _stats_author(message: Message) -> int | None:
+    """Автор для топа активных. Анонимный админ и пост от имени канала (sender_chat) не считаются."""
+    if message.sender_chat is not None:
+        return None
+    return message.from_user.id
+
+
 class ModerationPipelineMiddleware(BaseMiddleware):
     async def __call__(
         self,
@@ -134,7 +143,9 @@ class ModerationPipelineMiddleware(BaseMiddleware):
         # Любое сообщение участника, включая фото, стикеры и голосовые без текста (issue #47).
         if not is_edit:
             try:
-                await bump_stat(event.chat.id, "messages_count", utc_offset=settings.get("utc_offset", 0))
+                await bump_message_stats(
+                    event.chat.id, _stats_author(event), utc_offset=settings.get("utc_offset", 0)
+                )
             except Exception:
                 logger.exception("Failed to bump message stats")
 

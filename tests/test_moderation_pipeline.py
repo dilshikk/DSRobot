@@ -48,11 +48,11 @@ def env(monkeypatch):
     stats: list[str] = []
     autodelete: list[int] = []
 
-    # Сигнатура как у настоящего bump_stat (issue #47 добавил utc_offset).
-    async def fake_bump(chat_id, field, utc_offset=0):
-        stats.append(field)
+    # Сигнатура как у настоящего bump_message_stats (issue #92: общий счётчик + счётчик автора).
+    async def fake_bump(chat_id, user_id, utc_offset=0):
+        stats.append("messages_count")
 
-    monkeypatch.setattr(mp, "bump_stat", fake_bump)
+    monkeypatch.setattr(mp, "bump_message_stats", fake_bump)
     monkeypatch.setattr(
         mp.message_deletion, "schedule_command_autodelete",
         lambda message, settings: autodelete.append(message.message_id),

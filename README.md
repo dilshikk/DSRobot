@@ -37,7 +37,7 @@ Async Workers). Ниже — что реально реализовано, чт�
 | Rules | ✅ реализовано | `handlers/welcome/rules.py` |
 | Welcome / Goodbye | ✅ реализовано | `handlers/welcome/` |
 | Anti-flood | ✅ реализовано | `middlewares/antiflood.py` |
-| Anti-spam | ✅ базовая эвристика (дубликаты) | `handlers/moderation/antispam.py` |
+| Anti-spam | ✅ дубликаты, база CAS, правила для новичков | `handlers/moderation/antispam.py`, `handlers/moderation/spam_guard.py` |
 | Alphabets | ✅ реализовано | `handlers/misc/alphabets.py` |
 | Captcha (math) | ✅ реализовано | `handlers/welcome/captcha.py` |
 | Checks settings | ✅ базово (проверка прав бота) | `handlers/chat/checks_settings.py` |
@@ -70,9 +70,21 @@ Async Workers). Ниже — что реально реализовано, чт�
 
 🟡 = работает частично / нужна донастройка с вашей стороны (API-ключ, инфраструктура процессов).
 
+### Антиспам
+
+Работает, пока включён `/antispam`:
+
+- **Дубликаты**: одинаковые сообщения подряд → мут (`/setantispam ПОВТОРОВ [МИНУТ]`).
+- **База CAS** ([Combot Anti-Spam](https://cas.chat), ключ не нужен): известный спамер
+  банится при входе или на первом сообщении. Включение: `/cas on|off` (по умолчанию вкл.).
+  Если CAS недоступен, сообщения пропускаются.
+- **Новички**: первые 3 сообщения за 24 ч. после входа проверяются строже — ссылки не из
+  белого списка (`/allowlink`) удаляются, а @упоминания и пересылки удаляются, если у
+  аккаунта нет ни username, ни аватара. Действие: `/newcomers delete|warn|kick|ban|off|mute [МИНУТ]`.
+
 ## Архитектурные решения
 
-- **Одна таблица `chat_settings` (JSON)** вместо ~40 отдельных таблиц под каждый toggle
+- **Одна таблица `chat_settings` (JSONB)** вместо ~40 отдельных таблиц под каждый toggle
   — см. docstring в `bot/database/models.py`. Структурные данные (варны, роли,
   забаненные слова, рассылки) — в отдельных таблицах.
 - **Кэш настроек в Redis** (`services/settings_service.py`) — TTL 5 минут, чтобы не
@@ -105,6 +117,8 @@ pip install -r requirements.txt
 python -m bot.main
 ```
 
+Схема БД обновляется автоматически при старте (Alembic). Вручную: `alembic upgrade head`.
+
 ## Тесты
 
 ```bash
@@ -122,7 +136,8 @@ bot/
   main.py                # Точка входа: Dispatcher, middleware, polling
   database/
     models.py             # Все ORM-модели
-    engine.py              # Async engine/session
+    engine.py              # Async engine/session, запуск Alembic
+    migrations/             # Alembic-ревизии
   middlewares/
     chat_context.py         # Роль пользователя + настройки чата
     throttling.py            # Rate limit на команды
@@ -133,6 +148,7 @@ bot/
     moderation_actions.py    # Единая точка ban/mute/kick/warn
     scheduler.py               # APScheduler (отложенные/cron задачи)
     cache.py                     # Redis-обёртка
+    cas.py                        # Проверка по базе Combot Anti-Spam
   handlers/               # ~40 роутеров, сгруппированных по core/moderation/welcome/chat/misc
   locales/                # ru.json, en.json
 tests/                    # pytest, без внешних сервисов
@@ -146,10 +162,8 @@ requirements.txt
 
 1. Прогнать через реальный тестовый чат — поймать edge-кейсы Telegram API (права бота,
    лимиты).
-2. Alembic-миграции вместо `Base.metadata.create_all` (уже сейчас безопасно для старта,
-   но не для эволюции схемы в проде).
-3. Подключить провайдера anti-NSFW (Sightengine/AWS Rekognition) — точка расширения
+2. Подключить провайдера anti-NSFW (Sightengine/AWS Rekognition) — точка расширения
    уже готова в `handlers/moderation/anti_nsfw.py`.
-4. Оркестратор процессов для bot-clones (сейчас только хранение токенов в БД).
-5. UI-панель настроек через inline-кнопки (`/settings`) — сейчас конфигурация только
+3. Оркестратор процессов для bot-clones (сейчас только хранение токенов в БД).
+4. UI-панель настроек через inline-кнопки (`/settings`) — сейчас конфигурация только
    командами.

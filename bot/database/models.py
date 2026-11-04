@@ -24,6 +24,7 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    Index,
     Integer,
     JSON,
     String,
@@ -251,6 +252,27 @@ class GroupStat(Base):
     joins_count: Mapped[int] = mapped_column(Integer, default=0)
     leaves_count: Mapped[int] = mapped_column(Integer, default=0)
     sanctions_count: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class UserMessageStat(Base):
+    """Сообщения участника в чате за день — для топа активных в /stats (issue #92).
+
+    user_id без внешнего ключа на users: счётчик не должен падать, если строки users ещё нет.
+    /forget и /forgetme удаляют эти строки (services/privacy_service.py).
+    Ревизия: 0003_user_message_stats.
+    """
+    __tablename__ = "user_message_stats"
+    __table_args__ = (
+        UniqueConstraint("chat_id", "user_id", "date", name="uq_chat_user_date"),
+        Index("ix_user_message_stats_chat_date", "chat_id", "date"),
+        Index("ix_user_message_stats_user", "user_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    chat_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("chats.id", ondelete="CASCADE"))
+    user_id: Mapped[int] = mapped_column(BigInteger)
+    date: Mapped[date] = mapped_column(Date)
+    messages_count: Mapped[int] = mapped_column(Integer, default=0)
 
 
 class BotClone(Base):

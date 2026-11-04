@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     bot_token: str
     bot_id: int | None = None
     support_chat_id: int | None = None
+    # issue #94: false — апдейты, накопленные во время простоя (входы, сообщения), обрабатываются
+    # после перезапуска: новички получают капчу, спам модерируется. true — выбрасываются.
+    drop_pending_updates: bool = False
 
     # Roles (issue #11)
     # Telegram id через запятую, кто получает роль developer во всех чатах. Пусто = никто.

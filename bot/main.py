@@ -11,8 +11,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from typing import Iterable
 
-from aiogram import Dispatcher
+from aiogram import Bot, Dispatcher
 
 from bot.config import settings
 from bot.database import close_db, init_models
@@ -72,6 +73,18 @@ def setup_middlewares(dp: Dispatcher) -> None:
     dp.callback_query.outer_middleware(CallbackContextMiddleware())
 
 
+async def prepare_bots_for_polling(bots: Iterable[Bot], drop_pending: bool) -> None:
+    """
+    Снимает вебхук перед long polling (polling с активным вебхуком не работает).
+
+    issue #94: раньше всегда передавалось drop_pending_updates=True, и всё, что пришло
+    во время простоя (входы, сообщения), выбрасывалось: новички проходили без капчи, спам
+    не модерировался. Теперь по умолчанию апдейты сохраняются (Telegram хранит их до 24 ч.).
+    """
+    for b in bots:
+        await b.delete_webhook(drop_pending_updates=drop_pending)
+
+
 async def shutdown_resources() -> None:
     """
     Graceful shutdown (issue #13): закрывает пулы Redis и PostgreSQL.
@@ -115,8 +128,7 @@ async def main() -> None:
 
     logger.info("Бот запущен (клонов: %d), начинаю polling...", len(clone_bots))
     try:
-        for b in all_bots:
-            await b.delete_webhook(drop_pending_updates=True)
+        await prepare_bots_for_polling(all_bots, settings.drop_pending_updates)
         await dp.start_polling(*all_bots, allowed_updates=allowed_updates)
     finally:
         scheduler.shutdown(wait=False)

@@ -62,13 +62,15 @@ class InMemoryRedis:
     async def get(self, key):
         return self.data[key] if self._alive(key) else None
 
-    async def set(self, key, value, ex=None, nx=False):
+    async def set(self, key, value, ex=None, px=None, nx=False):
         if nx and self._alive(key):
             return None
         self.data[key] = str(value)
         self.expires.pop(key, None)
         if ex:
             self.expires[key] = time.monotonic() + ex
+        elif px:
+            self.expires[key] = time.monotonic() + px / 1000
         return True
 
     async def delete(self, *keys):

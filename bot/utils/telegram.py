@@ -102,6 +102,15 @@ def message_entities(message: Message) -> list[MessageEntity]:
     return list(message.entities or message.caption_entities or [])
 
 
+def is_command(message: Message) -> bool:
+    """
+    Команда = entity bot_command в начале текста или подписи, а не просто текст с "/".
+    Единое определение для throttling и цепочки модерации (issue #98): "/ привет" — не команда,
+    а фото с подписью "/stats" — команда (фильтр Command в aiogram тоже читает подпись).
+    """
+    return any(e.type == "bot_command" and e.offset == 0 for e in message_entities(message))
+
+
 def entity_text(message: Message, entity: MessageEntity) -> str:
     """Текст под entity. offset/length у Telegram — в UTF-16 code units."""
     raw = message_text(message).encode("utf-16-le")

@@ -26,6 +26,8 @@ issue #43: блокировки контента по форум-топикам 
 
 issue #14: база CAS (первой: известного спамера баним сразу) и правила для новичков
 (до фильтра ссылок: у новичков действие может быть строже).
+
+issue #98: определение команды общее с throttling (bot.utils.telegram.is_command).
 """
 from __future__ import annotations
 
@@ -43,6 +45,7 @@ from bot.handlers.moderation import (
     masked_users, max_message_length, media_blocks, message_deletion, night_mode, spam_guard,
 )
 from bot.services.stats import bump_message_stats
+from bot.utils.telegram import is_command
 
 logger = logging.getLogger(__name__)
 
@@ -90,11 +93,6 @@ def _is_service(message: Message) -> bool:
     return message.content_type not in USER_CONTENT_TYPES
 
 
-def _is_command(message: Message) -> bool:
-    """Команда = entity bot_command в начале сообщения, а не просто текст с "/"."""
-    return any(e.type == "bot_command" and e.offset == 0 for e in (message.entities or []))
-
-
 def _stats_author(message: Message) -> int | None:
     """Автор для топа активных. Анонимный админ и пост от имени канала (sender_chat) не считаются."""
     if message.sender_chat is not None:
@@ -122,11 +120,11 @@ class ModerationPipelineMiddleware(BaseMiddleware):
             return await handler(event, data)
 
         is_edit = event.edit_date is not None
-        is_command = _is_command(event)
+        command = is_command(event)
 
         role = data.get("chat_user_role", "member")
         for check in MESSAGE_CHECKS:
-            if (is_edit and check in SKIP_ON_EDIT) or (is_command and check in SKIP_ON_COMMAND):
+            if (is_edit and check in SKIP_ON_EDIT) or (command and check in SKIP_ON_COMMAND):
                 continue
             try:
                 if await check(event, settings, role):
@@ -135,7 +133,7 @@ class ModerationPipelineMiddleware(BaseMiddleware):
                 # Ошибка одной проверки не должна ломать остальные.
                 logger.exception("Moderation check %s failed", check.__name__)
 
-        if is_command:
+        if command:
             if not is_edit:
                 message_deletion.schedule_command_autodelete(event, settings)
             return await handler(event, data)

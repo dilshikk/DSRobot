@@ -130,10 +130,10 @@ def test_ban_and_kick_mark_member_left(sanction_env, action, left):
 def test_media_without_text_is_counted(monkeypatch):
     bumps: list[tuple] = []
 
-    async def fake_bump(chat_id, field, utc_offset=0):
-        bumps.append((field, utc_offset))
+    async def fake_bump(chat_id, user_id, utc_offset=0):
+        bumps.append((user_id, utc_offset))
 
-    monkeypatch.setattr(mp, "bump_stat", fake_bump)
+    monkeypatch.setattr(mp, "bump_message_stats", fake_bump)
     monkeypatch.setattr(mp, "MESSAGE_CHECKS", [])
     message = Message.model_construct(
         message_id=1, date=datetime.now(), chat=Chat.model_construct(id=-100, type="supergroup"),
@@ -146,4 +146,4 @@ def test_media_without_text_is_counted(monkeypatch):
 
     data = {"chat_settings": {"utc_offset": 5}, "chat_user_role": "member"}
     assert asyncio.run(mp.ModerationPipelineMiddleware()(handler, message, data)) == "handled"
-    assert bumps == [("messages_count", 5)]
+    assert bumps == [(42, 5)]

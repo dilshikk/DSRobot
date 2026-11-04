@@ -1,6 +1,6 @@
 """
-Antispam: эвристики против дубликатов сообщений (одно и то же сообщение подряд N раз)
-+ точка расширения под внешний CAS (Combot Anti-Spam) / собственную ML-модель.
+Antispam: эвристики против дубликатов сообщений (одно и то же сообщение подряд N раз).
+База CAS и правила для новичков — в spam_guard.py (issue #14).
 Проверка вызывается из bot/middlewares/moderation_pipeline.py. Ответы — на языке чата (issue #12).
 
 issue #49:
@@ -22,6 +22,7 @@ from bot.services.chat_lang import get_chat_lang
 from bot.services.moderation_actions import MAX_MUTE_MINUTES, apply_sanction
 from bot.services.settings_service import update_settings
 from bot.utils.i18n import t, toggle_text
+from bot.utils.parsing import bounded_int
 from bot.utils.permissions import is_privileged
 from bot.utils.telegram import delete_by_id_safely, message_text
 
@@ -35,18 +36,10 @@ MAX_THRESHOLD = 20
 DUPLICATE_WINDOW_SEC = 30
 
 
-def _bounded(value: object, default: int, low: int, high: int) -> int:
-    try:
-        number = int(value)
-    except (TypeError, ValueError):
-        return default
-    return number if low <= number <= high else default
-
-
 def antispam_limits(cfg: dict) -> tuple[int, int]:
     """(порог повторов, минуты мута) из настроек чата с безопасными значениями по умолчанию."""
-    threshold = _bounded(cfg.get("duplicate_threshold"), DEFAULT_THRESHOLD, MIN_THRESHOLD, MAX_THRESHOLD)
-    minutes = _bounded(cfg.get("mute_minutes"), DEFAULT_MUTE_MINUTES, 1, MAX_MUTE_MINUTES)
+    threshold = bounded_int(cfg.get("duplicate_threshold"), DEFAULT_THRESHOLD, MIN_THRESHOLD, MAX_THRESHOLD)
+    minutes = bounded_int(cfg.get("mute_minutes"), DEFAULT_MUTE_MINUTES, 1, MAX_MUTE_MINUTES)
     return threshold, minutes
 
 

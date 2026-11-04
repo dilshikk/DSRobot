@@ -21,6 +21,9 @@ issue #34: команды тоже проходят проверки. Раньш
 issue #47: в статистику попадают и медиа без текста; день считается по часовому поясу чата.
 
 issue #43: блокировки контента по форум-топикам (TopicSettings.locked_features).
+
+issue #14: база CAS (первой: известного спамера баним сразу) и правила для новичков
+(до фильтра ссылок: у новичков действие может быть строже).
 """
 from __future__ import annotations
 
@@ -36,7 +39,7 @@ from bot.handlers.chat.group_statistics import bump_stat
 from bot.handlers.misc import alphabets
 from bot.handlers.moderation import (
     anti_nsfw, antispam, approve_mode, banned_words, blocks, link_settings,
-    masked_users, max_message_length, media_blocks, message_deletion, night_mode,
+    masked_users, max_message_length, media_blocks, message_deletion, night_mode, spam_guard,
 )
 
 logger = logging.getLogger(__name__)
@@ -45,6 +48,7 @@ Check = Callable[[Message, dict, str], Awaitable[bool]]
 
 # Порядок важен: сначала самые "дешёвые" и строгие проверки.
 MESSAGE_CHECKS: list[Check] = [
+    spam_guard.check_cas,
     approve_mode.check_unapproved,
     night_mode.check_night_mode,
     blocks.check_forward_block,
@@ -52,6 +56,7 @@ MESSAGE_CHECKS: list[Check] = [
     media_blocks.check_media_block,
     topics_settings.check_topic_locks,
     anti_nsfw.check_nsfw,
+    spam_guard.check_newcomer_spam,
     masked_users.check_masked_links,
     link_settings.check_links,
     banned_words.check_banned_words,

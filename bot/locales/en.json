@@ -100,6 +100,13 @@
   "antispam_reason": "Antispam: repeated messages",
   "antispam_usage": "Usage: /setantispam REPEATS [MUTE_MINUTES]\nRepeats from {min} to {max}, minutes from 1 to {max_minutes} (default 30).",
   "antispam_set": "✅ Antispam: {minutes} min. mute after {threshold} identical messages in a row.",
+  "cas_reason": "Antispam: account is in the CAS spammer database",
+  "cas_usage": "Usage: /cas on | off\nChecks the shared Combot Anti-Spam database: known spammers are banned right away.",
+  "cas_on": "✅ CAS database check enabled.",
+  "cas_off": "✅ CAS database check disabled.",
+  "newcomers_usage": "Usage: /newcomers delete | warn | kick | ban | off | mute [minutes, default 60]\nA newcomer's first {messages} messages within {hours} h. after joining are checked more strictly: links not on the whitelist are removed, and so are @mentions and forwards if the account has neither a username nor a profile photo.",
+  "newcomers_set": "✅ Action on newcomer spam: {action}",
+  "newcomer_reason": "Antispam: promotion from a new member",
 
   "block_usage": "Usage: /block {options}",
   "unblock_usage": "Usage: /unblock {options}",

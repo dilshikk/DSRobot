@@ -54,6 +54,8 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     sentry_dsn: str | None = None
     crypto_api_url: str = "https://api.coingecko.com/api/v3/simple/price"
+    # Combot Anti-Spam: база известных спамеров (issue #14). Ключ не нужен.
+    cas_api_url: str = "https://api.cas.chat/check"
 
     @property
     def clone_allowed_ids(self) -> set[int]:

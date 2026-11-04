@@ -16,3 +16,12 @@ def parse_int(raw: str | None, lo: int, hi: int) -> int | None:
 
 def parse_chat_id(raw: str | None) -> int | None:
     return parse_int(raw, -CHAT_ID_LIMIT, CHAT_ID_LIMIT)
+
+
+def bounded_int(value: object, default: int, lo: int, hi: int) -> int:
+    """Число из настроек чата в [lo, hi], иначе default: мусор в JSON не должен ломать проверки."""
+    try:
+        number = int(value)  # type: ignore[call-overload]
+    except (TypeError, ValueError):
+        return default
+    return number if lo <= number <= hi else default

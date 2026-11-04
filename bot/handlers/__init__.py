@@ -14,7 +14,7 @@ from bot.handlers.moderation import (
     anonymous_admins, antiflood, antispam, anti_nsfw, approve_mode, banned_words,
     blocks, channel_moderation, custom_roles, link_settings, masked_users,
     max_message_length, media_blocks, message_deletion, moderation_commands,
-    night_mode, roles_permissions, warns,
+    night_mode, roles_permissions, spam_guard, warns,
 )
 from bot.handlers.welcome import captcha, goodbye, rules, service_events, welcome
 from bot.handlers.chat import (
@@ -34,7 +34,7 @@ ALL_ROUTERS = [
     # moderation
     roles_permissions.router, custom_roles.router, moderation_commands.router,
     channel_moderation.router, anonymous_admins.router, warns.router,
-    antiflood.router, antispam.router, blocks.router, media_blocks.router,
+    antiflood.router, antispam.router, spam_guard.router, blocks.router, media_blocks.router,
     anti_nsfw.router, banned_words.router, link_settings.router, approve_mode.router,
     message_deletion.router, night_mode.router, max_message_length.router, masked_users.router,
     # welcome
